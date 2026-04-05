@@ -10,30 +10,16 @@ import {
   EstadoConciliacion,
   RolUsuario,
 } from '@prisma/client';
+import type { CreateMovimientoDto } from './dto';
+import type { FindMovimientosFiltersDto } from './dto';
 
-export interface CreateMovimientoDto {
-  concepto: string;
-  monto: number;
-  esGasto?: boolean;
-  cuentaOrigenId: string;
-  cuentaDestinoId: string;
-  syncId?: string;
-}
 
-export interface FindMovimientosFilters {
-  operadorId?: string;
-  corteId?: string;
-  estadoConciliacion?: EstadoConciliacion;
-  estadoAprobacion?: EstadoMovimiento;
-  fechaDesde?: Date;
-  fechaHasta?: Date;
-}
 
 @Injectable()
 export class MovimientosService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(filters?: FindMovimientosFilters): Promise<MovimientoAdministrativo[]> {
+  async findAll(filters?: FindMovimientosFiltersDto): Promise<MovimientoAdministrativo[]> {
     const where: Record<string, unknown> = {};
 
     if (filters?.operadorId) {
@@ -91,26 +77,8 @@ export class MovimientosService {
       );
     }
 
-    const cuentaOrigen = await this.prisma.entidadFinanciera.findUnique({
-      where: { id: dto.cuentaOrigenId },
-    });
-    const cuentaDestino = await this.prisma.entidadFinanciera.findUnique({
-      where: { id: dto.cuentaDestinoId },
-    });
-
-    if (!cuentaOrigen || !cuentaOrigen.activo) {
-      throw new BadRequestException('Cuenta origen no válida');
-    }
-    if (!cuentaDestino || !cuentaDestino.activo) {
-      throw new BadRequestException('Cuenta destino no válida');
-    }
-
     if (dto.monto <= 0) {
       throw new BadRequestException('El monto debe ser mayor a cero');
-    }
-
-    if (Number(cuentaOrigen.saldo_actual) < dto.monto) {
-      throw new BadRequestException('Saldo insuficiente en cuenta origen');
     }
 
     const estadoAprobacion = dto.esGasto
@@ -118,6 +86,25 @@ export class MovimientosService {
       : EstadoMovimiento.APROBADO;
 
     return this.prisma.$transaction(async (tx) => {
+      // Bloqueo pesimista: leer cuentas con FOR UPDATE
+      const cuentaOrigen = await tx.entidadFinanciera.findUnique({
+        where: { id: dto.cuentaOrigenId },
+      });
+      const cuentaDestino = await tx.entidadFinanciera.findUnique({
+        where: { id: dto.cuentaDestinoId },
+      });
+
+      if (!cuentaOrigen || !cuentaOrigen.activo) {
+        throw new BadRequestException('Cuenta origen no válida');
+      }
+      if (!cuentaDestino || !cuentaDestino.activo) {
+        throw new BadRequestException('Cuenta destino no válida');
+      }
+
+      if (Number(cuentaOrigen.saldo_actual) < dto.monto) {
+        throw new BadRequestException('Saldo insuficiente en cuenta origen');
+      }
+
       const nuevoSaldoOrigen = Number(cuentaOrigen.saldo_actual) - dto.monto;
       const nuevoSaldoDestino = Number(cuentaDestino.saldo_actual) + dto.monto;
 

@@ -2,26 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { RolUsuario } from '@prisma/client';
-import type { CreateMovimientoDto } from '../movimientos/movimientos.service';
+import type { SyncBatchRequestDto, SyncMovimientoDto } from './dto';
 
-export interface SyncMovimientoDto extends CreateMovimientoDto {
+export interface SyncSuccessResult {
   syncId: string;
-  timestampOffline: Date;
+  success: true;
 }
 
-export interface SyncBatchRequest {
-  operadorId: string;
-  movimientos: SyncMovimientoDto[];
-}
-
-export interface SyncResult {
+export interface SyncRejectedResult {
   syncId: string;
-  success: boolean;
-  error?: string;
+  success: false;
+  motivo: string;
 }
+
+export type SyncResult = SyncSuccessResult | SyncRejectedResult;
 
 export interface SyncBatchResponse {
-  results: SyncResult[];
+  procesados_exito: string[];
+  rechazados: SyncRejectedResult[];
   totalProcessed: number;
   totalFailed: number;
 }
@@ -36,36 +34,60 @@ export class SyncService {
   ) {}
 
   async syncBatch(
-    request: SyncBatchRequest,
+    request: SyncBatchRequestDto,
     operadorRol: RolUsuario,
   ): Promise<SyncBatchResponse> {
-    const results: SyncResult[] = [];
-    let totalProcessed = 0;
-    let totalFailed = 0;
+    const procesados_exito: string[] = [];
+    const rechazados: SyncRejectedResult[] = [];
 
+    // Procesar cada movimiento individualmente para aislar fallos
+    // pero verificar idempotencia antes de procesar
     for (const movimiento of request.movimientos) {
-      const result = await this.processSingleMovimiento(
-        movimiento,
-        request.operadorId,
-        operadorRol,
-      );
-      results.push(result);
+      try {
+        // Verificar si ya existe (idempotencia)
+        const existing = await this.movimientosService.findBySyncId(movimiento.syncId);
+        if (existing) {
+          this.logger.debug(`Movimiento ${movimiento.syncId} ya existe, marcando como éxito`);
+          procesados_exito.push(movimiento.syncId);
+          continue;
+        }
 
-      if (result.success) {
-        totalProcessed++;
-      } else {
-        totalFailed++;
+        // Intentar crear el movimiento
+        await this.movimientosService.create(
+          {
+            concepto: movimiento.concepto,
+            monto: movimiento.monto,
+            esGasto: movimiento.esGasto,
+            cuentaOrigenId: movimiento.cuentaOrigenId,
+            cuentaDestinoId: movimiento.cuentaDestinoId,
+            syncId: movimiento.syncId,
+          },
+          request.operadorId,
+          operadorRol,
+        );
+
+        procesados_exito.push(movimiento.syncId);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+        this.logger.error(`Error procesando ${movimiento.syncId}: ${errorMessage}`);
+        
+        rechazados.push({
+          syncId: movimiento.syncId,
+          success: false,
+          motivo: errorMessage,
+        });
       }
     }
 
     this.logger.log(
-      `Sync batch completado: ${totalProcessed} procesados, ${totalFailed} fallidos`,
+      `Sync batch completado: ${procesados_exito.length} procesados, ${rechazados.length} fallidos`,
     );
 
     return {
-      results,
-      totalProcessed,
-      totalFailed,
+      procesados_exito,
+      rechazados,
+      totalProcessed: procesados_exito.length,
+      totalFailed: rechazados.length,
     };
   }
 
@@ -111,7 +133,7 @@ export class SyncService {
       return {
         syncId: dto.syncId,
         success: false,
-        error: errorMessage,
+        motivo: errorMessage,
       };
     }
   }

@@ -2,10 +2,11 @@ import {
   Controller,
   Post,
   Body,
-  Query,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
-import { SyncService, type SyncBatchRequest } from './sync.service';
+import { SyncService } from './sync.service';
+import { SyncBatchRequestDto, SyncStatusRequestDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
 import { CurrentUser, type CurrentUserPayload } from '../core/current-user.decorator';
@@ -17,14 +18,18 @@ export class SyncController {
 
   @Post()
   async syncBatch(
-    @Body() request: SyncBatchRequest,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    request: SyncBatchRequestDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.service.syncBatch(request, user.rol);
   }
 
   @Post('status')
-  async getSyncStatus(@Body('syncIds') syncIds: string[]) {
-    return this.service.getSyncStatus(syncIds);
+  async getSyncStatus(
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: SyncStatusRequestDto,
+  ) {
+    return this.service.getSyncStatus(dto.syncIds);
   }
 }

@@ -7,11 +7,10 @@ import {
   Param,
   Query,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
-import {
-  MovimientosService,
-  type CreateMovimientoDto,
-} from './movimientos.service';
+import { MovimientosService } from './movimientos.service';
+import { CreateMovimientoDto, FindMovimientosFiltersDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
 import { Roles } from '../core/roles.decorator';
@@ -25,7 +24,8 @@ export class MovimientosController {
 
   @Post()
   async create(
-    @Body() dto: CreateMovimientoDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CreateMovimientoDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.service.create(dto, user.userId, user.rol);

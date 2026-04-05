@@ -17,8 +17,9 @@ async function bootstrap() {
 // Global filters and interceptors are configured in CoreModule
 
   app.enableCors({
-    origin: ['http://localhost:1420', 'tauri://localhost'],
-    credentials: true,
+    origin: '*',
+    methods: 'GET,POST,PUT,DELETE,PATCH,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization',
   });
 
   await app.listen(process.env.PORT ?? 3000);

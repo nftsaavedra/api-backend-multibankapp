@@ -6,8 +6,10 @@ import {
   Param,
   Query,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
-import { CortesCajaService, type CreateCorteDto } from './cortes-caja.service';
+import { CortesCajaService } from './cortes-caja.service';
+import { CreateCorteDto, FindCortesFiltersDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
 import { CurrentUser, type CurrentUserPayload } from '../core/current-user.decorator';
@@ -20,7 +22,8 @@ export class CortesCajaController {
 
   @Post()
   async create(
-    @Body() dto: CreateCorteDto,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    dto: CreateCorteDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.service.create(dto, user.userId);

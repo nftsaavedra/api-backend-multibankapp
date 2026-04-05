@@ -1,24 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CorteCaja, TipoCorte, EstadoConciliacion } from '@prisma/client';
+import { CorteCaja, EstadoConciliacion } from '@prisma/client';
 import { DateTime } from 'luxon';
+import type { CreateCorteDto, FindCortesFiltersDto } from './dto';
 
 const TIMEZONE = 'America/Lima';
-
-export interface CreateCorteDto {
-  tipoCorte: TipoCorte;
-  saldoEfectivoDeclarado: number;
-  saldoDigitalDeclarado: number;
-  excedenteComision: number;
-  operacionesKasnet: number;
-  fechaInicioBloque?: Date;
-}
-
-export interface FindCortesFilters {
-  operadorId?: string;
-  fechaDesde?: Date;
-  fechaHasta?: Date;
-}
 
 export interface CorteResult {
   corte: CorteCaja;
@@ -29,7 +15,7 @@ export interface CorteResult {
 export class CortesCajaService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(filters?: FindCortesFilters): Promise<CorteCaja[]> {
+  async findAll(filters?: FindCortesFiltersDto): Promise<CorteCaja[]> {
     const where: Record<string, unknown> = {};
 
     if (filters?.operadorId) {

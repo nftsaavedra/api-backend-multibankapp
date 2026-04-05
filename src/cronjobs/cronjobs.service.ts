@@ -1,14 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma.service';
-import { EstadoMovimiento, EstadoConciliacion } from '@prisma/client';
+import { EstadoMovimiento } from '@prisma/client';
 
 export interface Anomalia {
-  tipo: 'SALDO_NEGATIVO' | 'MOVIMIENTO_PENDIENTE_VIEJO' | 'DESCUADRE';
+  tipo: 'SALDO_NEGATIVO' | 'MOVIMIENTO_PENDIENTE_VIEJO' | 'DESCUADRE' | 'ANOMALIA_IA';
   descripcion: string;
   entidadId?: string;
   movimientoId?: string;
+  corteId?: string;
   detalles?: Record<string, unknown>;
+}
+
+export interface VectorAnomalyResult {
+  id: string;
+  ia_fingerprint: string;
 }
 
 @Injectable()
@@ -28,6 +34,9 @@ export class CronjobsService {
 
     const movimientosViejos = await this.detectarMovimientosPendientesViejos();
     anomalias.push(...movimientosViejos);
+
+    const anomaliasIA = await this.detectarAnomaliasVectoriales();
+    anomalias.push(...anomaliasIA);
 
     if (anomalias.length > 0) {
       this.logger.warn(`Se detectaron ${anomalias.length} anomalías:`);
@@ -80,5 +89,57 @@ export class CronjobsService {
         fechaRegistro: mov.fecha_registro,
       },
     }));
+  }
+
+  private async detectarAnomaliasVectoriales(): Promise<Anomalia[]> {
+    try {
+      const cortesConFingerprint = await this.prisma.$queryRaw<VectorAnomalyResult[]>`
+        SELECT id, ia_fingerprint
+        FROM "CorteCaja"
+        WHERE ia_fingerprint IS NOT NULL
+        ORDER BY fecha_corte_ejecucion DESC
+        LIMIT 100
+      `;
+
+      if (cortesConFingerprint.length < 2) {
+        return [];
+      }
+
+      const anomalias: Anomalia[] = [];
+      const umbralAnomalia = 0.85;
+
+      for (let i = 0; i < cortesConFingerprint.length; i++) {
+        const corteActual = cortesConFingerprint[i];
+
+        for (let j = i + 1; j < cortesConFingerprint.length; j++) {
+          const corteComparacion = cortesConFingerprint[j];
+
+          const distanceResult = await this.prisma.$queryRaw<{ distance: number }[]>`
+            SELECT ${corteActual.ia_fingerprint}::vector <=> ${corteComparacion.ia_fingerprint}::vector AS distance
+          `;
+
+          const distance = distanceResult[0]?.distance ?? 1;
+
+          if (distance > umbralAnomalia) {
+            anomalias.push({
+              tipo: 'ANOMALIA_IA',
+              descripcion: `Corte ${corteActual.id} tiene patrón anómalo (distancia: ${distance.toFixed(4)})`,
+              corteId: corteActual.id,
+              detalles: {
+                distance,
+                corteComparadoId: corteComparacion.id,
+                umbral: umbralAnomalia,
+              },
+            });
+            break;
+          }
+        }
+      }
+
+      return anomalias;
+    } catch (error) {
+      this.logger.error('Error en detección de anomalías vectoriales:', error);
+      return [];
+    }
   }
 }
