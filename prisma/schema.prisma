@@ -1,13 +1,101 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum RolUsuario {
+  OPERADOR
+  SUPERVISOR
+}
+
+enum TipoCorte {
+  INICIO_DIA
+  MEDIO_DIA
+  INICIO_TARDE
+  CIERRE_DIA
+}
+
+enum EstadoConciliacion {
+  NO_CONCILIADO
+  CONCILIADO
+}
+
+enum EstadoMovimiento {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+model Usuario {
+  id            String                     @id @default(uuid())
+  username      String                     @unique
+  password_hash String
+  rol           RolUsuario                 @default(OPERADOR)
+  activo        Boolean                    @default(true)
+
+  movimientos MovimientoAdministrativo[]
+  cortes      CorteCaja[]
+
+  @@map("usuarios")
+}
+
+model EntidadFinanciera {
+  id                  String                     @id @default(uuid())
+  tipo                String
+  nombre              String                     @unique
+  saldo_actual        Decimal                    @db.Decimal(10, 2)
+  activo              Boolean                    @default(true)
+
+  movimientos_origen  MovimientoAdministrativo[] @relation("CuentaOrigen")
+  movimientos_destino MovimientoAdministrativo[] @relation("CuentaDestino")
+
+  @@map("entidades_financieras")
+}
+
+model CorteCaja {
+  id                      String    @id @default(uuid())
+  operador_id             String
+  tipo_corte              TipoCorte
+  fecha_inicio_bloque     DateTime  @db.Timestamptz(3)
+  fecha_corte_ejecucion   DateTime  @db.Timestamptz(3) @default(now())
+
+  saldo_efectivo_declarado Decimal @db.Decimal(10, 2)
+  saldo_digital_declarado  Decimal @db.Decimal(10, 2)
+  excedente_comision       Decimal @db.Decimal(10, 2)
+  operaciones_kasnet       Int
+
+  ia_fingerprint       String?
+
+  operador             Usuario @relation(fields: [operador_id], references: [id])
+  movimientos_sellados MovimientoAdministrativo[]
+
+  @@map("cortes_caja")
+}
+
+model MovimientoAdministrativo {
+  id                    String             @id @default(uuid())
+  operador_id           String
+  corte_id              String?
+
+  concepto              String
+  monto                 Decimal            @db.Decimal(10, 2)
+  estado_aprobacion     EstadoMovimiento   @default(APROBADO)
+  estado_conciliacion   EstadoConciliacion @default(NO_CONCILIADO)
+
+  cuenta_origen_id      String
+  cuenta_destino_id     String
+
+  fecha_registro        DateTime           @db.Timestamptz(3) @default(now())
+  aprobado_por          String?
+  sync_id               String?            @unique
+
+  operador              Usuario            @relation(fields: [operador_id], references: [id])
+  corte_sellado         CorteCaja?         @relation(fields: [corte_id], references: [id])
+  cuenta_origen         EntidadFinanciera  @relation("CuentaOrigen", fields: [cuenta_origen_id], references: [id])
+  cuenta_destino        EntidadFinanciera  @relation("CuentaDestino", fields: [cuenta_destino_id], references: [id])
+
+  @@map("movimientos_administrativos")
 }
