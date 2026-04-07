@@ -12,7 +12,7 @@ export class CreateEntidadDto {
 
   @IsDecimal({ decimal_digits: '0,2' })
   @Type(() => String)
-  saldo_actual: string;
+  saldoInicial: string;
 
   @IsOptional()
   @IsBoolean()
@@ -30,11 +30,6 @@ export class UpdateEntidadDto {
   @IsString()
   @MinLength(2)
   nombre?: string;
-
-  @IsOptional()
-  @IsDecimal({ decimal_digits: '0,2' })
-  @Type(() => String)
-  saldo_actual?: string;
 
   @IsOptional()
   @IsBoolean()

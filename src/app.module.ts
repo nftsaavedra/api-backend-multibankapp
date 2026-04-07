@@ -19,12 +19,17 @@ import { AppController } from './app.controller';
       {
         name: 'default',
         ttl: 60000, // 1 minuto
-        limit: 100, // 100 peticiones por minuto
+        limit: 200, // 200 peticiones por minuto (aumentado para desarrollo)
       },
       {
         name: 'auth',
         ttl: 60000, // 1 minuto
-        limit: 5, // 5 intentos por minuto para auth
+        limit: 10, // 10 intentos por minuto para auth
+      },
+      {
+        name: 'setup',
+        ttl: 60000, // 1 minuto
+        limit: 50, // 50 peticiones para setup/sync
       },
     ]),
     CoreModule,

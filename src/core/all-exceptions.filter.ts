@@ -10,7 +10,7 @@ import { Request, Response } from 'express';
 
 interface ErrorResponse {
   statusCode: number;
-  message: string;
+  message: string | string[];
   error: string;
   timestamp: string;
   path: string;
@@ -30,10 +30,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // No exponer detalles de errores internos en producción
+    const isProduction = process.env.NODE_ENV === 'production';
     const message =
       exception instanceof HttpException
         ? exception.message
-        : 'Internal server error';
+        : isProduction
+          ? 'Internal server error'
+          : (exception instanceof Error ? exception.message : 'Unknown error');
 
     const errorResponse: ErrorResponse = {
       statusCode: status,
@@ -43,10 +47,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       path: request.url,
     };
 
-    this.logger.error(
-      `${request.method} ${request.url} - ${status}: ${message}`,
-      exception instanceof Error ? exception.stack : undefined,
-    );
+    // Log detallado solo para errores internos
+    if (status >= 500) {
+      this.logger.error(
+        `${request.method} ${request.url} - ${status}: ${message}`,
+        exception instanceof Error ? exception.stack : undefined,
+      );
+    }
 
     response.status(status).json(errorResponse);
   }

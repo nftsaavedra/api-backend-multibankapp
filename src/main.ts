@@ -23,17 +23,36 @@ async function bootstrap() {
 
   // Global filters and interceptors are configured in CoreModule
 
-  // CORS configurado para producción
+  // CORS configurado para múltiples clientes (Desktop, Mobile, Web)
+  // En producción, configurar ALLOWED_ORIGINS con dominios específicos
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',')
-    : ['http://localhost:1420']; // Tauri dev por defecto
+    : [
+        'http://localhost:1420', // Tauri dev
+        'http://localhost:5173', // Vite dev
+        'http://localhost:3000', // Next.js/React dev
+        'http://localhost:8080', // Alternative dev port
+        'tauri://localhost', // Tauri production
+        'capacitor://localhost', // Capacitor mobile
+        'ionic://localhost', // Ionic mobile
+      ];
 
   app.enableCors({
-    origin: allowedOrigins,
-    methods: 'GET,POST,PUT,DELETE,PATCH',
-    allowedHeaders: 'Content-Type,Authorization',
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+      // Permitir requests sin origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,X-Requested-With,Accept,Origin',
+    exposedHeaders: 'Content-Length,Content-Range,X-Total-Count',
     credentials: true,
-    maxAge: 3600,
+    maxAge: 86400, // 24 horas
   });
 
   // Security headers

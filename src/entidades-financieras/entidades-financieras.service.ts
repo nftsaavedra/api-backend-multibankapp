@@ -1,18 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { EntidadFinanciera } from '@prisma/client';
-
-export interface CreateEntidadDto {
-  tipo: string;
-  nombre: string;
-  saldoInicial: number;
-}
-
-export interface UpdateEntidadDto {
-  tipo?: string;
-  nombre?: string;
-  activo?: boolean;
-}
+import { CreateEntidadDto, UpdateEntidadDto } from './dto';
 
 @Injectable()
 export class EntidadesFinancierasService {
