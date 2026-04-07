@@ -1,0 +1,88 @@
+# Specify files or folders to ignore during indexing. The same as .gitignore rules, glob patterns like *.log，my-security/ are supported.
+
+# ==========================================
+# REGLAS DE EXCLUSIÓN GLOBALES PARA QODER
+# ==========================================
+
+# 1. Metadatos de IA, Agentes y Asistentes (Prevención de Context Pollution)
+.agentskills/
+*.agentskill
+.agents
+.qoder/
+.cursorrules
+.copilot/
+.aider/
+.aider*
+prompt_history.json
+chat_history/
+
+# 2. Dependencias de Ecosistemas (Node.js, Python, Rust, Flutter)
+node_modules/
+jspm_packages/
+.pnp
+.pnp.js
+venv/
+.venv/
+env/
+__pycache__/
+.dart_tool/
+
+# 3. Salidas de Compilación, Transpilación y Caché
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+target/
+lib-cov/
+*.pyc
+*.pyo
+
+# 4. Logs, Depuración y Profiling
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+rust-toolchain.toml
+
+# 5. Pruebas y Reportes de Cobertura
+coverage/
+.nyc_output/
+.tox/
+.pytest_cache/
+
+# 6. Seguridad, Credenciales y Entorno (Auditoría Estricta)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.cert
+secrets/
+*.p12
+
+# 7. Infraestructura y Despliegues (Docker, K8s, Dokploy)
+# (Solo excluir estados temporales o volúmenes locales, NO excluir manifiestos yaml)
+.docker/
+docker-volumes/
+db-data/
+*.rdb
+*.aof
+
+# 8. Metadatos de SO y Entornos IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
