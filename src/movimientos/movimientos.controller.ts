@@ -10,12 +10,19 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { MovimientosService } from './movimientos.service';
-import { CreateMovimientoDto, FindMovimientosFiltersDto } from './dto';
+import { CreateMovimientoDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
 import { Roles } from '../core/roles.decorator';
-import { CurrentUser, type CurrentUserPayload } from '../core/current-user.decorator';
-import { RolUsuario, EstadoConciliacion, EstadoMovimiento } from '@prisma/client';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../core/current-user.decorator';
+import {
+  RolUsuario,
+  EstadoConciliacion,
+  EstadoMovimiento,
+} from '@prisma/client';
 
 @Controller('movimientos')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,7 +35,7 @@ export class MovimientosController {
     dto: CreateMovimientoDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.service.create(dto, user.userId, user.rol);
+    return this.service.create(dto, user.userId);
   }
 
   @Get()

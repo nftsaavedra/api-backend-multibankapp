@@ -1,11 +1,9 @@
+import { Controller, Get, Post, Body, ValidationPipe, HttpException, HttpStatus } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  ValidationPipe,
-} from '@nestjs/common';
-import { SetupService, type SetupStatus, type SetupResult } from './setup.service';
+  SetupService,
+  type SetupStatus,
+  type SetupResult,
+} from './setup.service';
 import { IsString, MinLength } from 'class-validator';
 
 class InitSetupDto {
@@ -32,6 +30,14 @@ export class SetupController {
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
     dto: InitSetupDto,
   ): Promise<SetupResult> {
+    // Verificar que el sistema no haya sido inicializado previamente
+    const status = await this.setupService.getStatus();
+    if (status.initialized) {
+      throw new HttpException(
+        'El sistema ya ha sido inicializado',
+        HttpStatus.CONFLICT,
+      );
+    }
     return this.setupService.initialize(dto);
   }
 }

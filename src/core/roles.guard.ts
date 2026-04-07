@@ -8,6 +8,11 @@ import { Reflector } from '@nestjs/core';
 import { RolUsuario } from '@prisma/client';
 
 import { ROLES_KEY } from './roles.decorator';
+import { CurrentUserPayload } from './current-user.decorator';
+
+interface RequestWithUser {
+  user?: CurrentUserPayload;
+}
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -23,7 +28,8 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
 
     if (!user) {
       throw new ForbiddenException('Usuario no autenticado');

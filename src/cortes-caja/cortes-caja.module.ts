@@ -4,6 +4,6 @@ import { CortesCajaService } from './cortes-caja.service';
 
 @Module({
   controllers: [CortesCajaController],
-  providers: [CortesCajaService]
+  providers: [CortesCajaService],
 })
 export class CortesCajaModule {}

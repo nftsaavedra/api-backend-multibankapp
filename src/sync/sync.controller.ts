@@ -9,7 +9,6 @@ import { SyncService } from './sync.service';
 import { SyncBatchRequestDto, SyncStatusRequestDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
-import { CurrentUser, type CurrentUserPayload } from '../core/current-user.decorator';
 
 @Controller('sync')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,9 +19,8 @@ export class SyncController {
   async syncBatch(
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
     request: SyncBatchRequestDto,
-    @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.service.syncBatch(request, user.rol);
+    return this.service.syncBatch(request);
   }
 
   @Post('status')

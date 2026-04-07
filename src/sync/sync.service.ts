@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
-import { RolUsuario } from '@prisma/client';
 import type { SyncBatchRequestDto, SyncMovimientoDto } from './dto';
 
 export interface SyncSuccessResult {
@@ -33,21 +32,22 @@ export class SyncService {
     private readonly movimientosService: MovimientosService,
   ) {}
 
-  async syncBatch(
-    request: SyncBatchRequestDto,
-    operadorRol: RolUsuario,
-  ): Promise<SyncBatchResponse> {
+  async syncBatch(request: SyncBatchRequestDto): Promise<SyncBatchResponse> {
     const procesados_exito: string[] = [];
     const rechazados: SyncRejectedResult[] = [];
 
     // Procesar cada movimiento individualmente para aislar fallos
-    // pero verificar idempotencia antes de procesar
+    // pero verificar idempotence antes de procesar
     for (const movimiento of request.movimientos) {
       try {
-        // Verificar si ya existe (idempotencia)
-        const existing = await this.movimientosService.findBySyncId(movimiento.syncId);
+        // Verificar si ya existe (idempotence)
+        const existing = await this.movimientosService.findBySyncId(
+          movimiento.syncId,
+        );
         if (existing) {
-          this.logger.debug(`Movimiento ${movimiento.syncId} ya existe, marcando como éxito`);
+          this.logger.debug(
+            `Movimiento ${movimiento.syncId} ya existe, marcando como éxito`,
+          );
           procesados_exito.push(movimiento.syncId);
           continue;
         }
@@ -63,14 +63,16 @@ export class SyncService {
             syncId: movimiento.syncId,
           },
           request.operadorId,
-          operadorRol,
         );
 
         procesados_exito.push(movimiento.syncId);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
-        this.logger.error(`Error procesando ${movimiento.syncId}: ${errorMessage}`);
-        
+        const errorMessage =
+          error instanceof Error ? error.message : 'Error desconocido';
+        this.logger.error(
+          `Error procesando ${movimiento.syncId}: ${errorMessage}`,
+        );
+
         rechazados.push({
           syncId: movimiento.syncId,
           success: false,
@@ -94,13 +96,14 @@ export class SyncService {
   private async processSingleMovimiento(
     dto: SyncMovimientoDto,
     operadorId: string,
-    operadorRol: RolUsuario,
   ): Promise<SyncResult> {
     try {
       const existing = await this.movimientosService.findBySyncId(dto.syncId);
 
       if (existing) {
-        this.logger.debug(`Movimiento con syncId ${dto.syncId} ya existe, ignorando`);
+        this.logger.debug(
+          `Movimiento con syncId ${dto.syncId} ya existe, ignorando`,
+        );
         return {
           syncId: dto.syncId,
           success: true,
@@ -117,7 +120,6 @@ export class SyncService {
           syncId: dto.syncId,
         },
         operadorId,
-        operadorRol,
       );
 
       return {
@@ -125,7 +127,8 @@ export class SyncService {
         success: true,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Error desconocido';
       this.logger.error(
         `Error procesando movimiento ${dto.syncId}: ${errorMessage}`,
       );

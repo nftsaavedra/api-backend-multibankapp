@@ -9,10 +9,13 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { CortesCajaService } from './cortes-caja.service';
-import { CreateCorteDto, FindCortesFiltersDto } from './dto';
+import { CreateCorteDto } from './dto';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
-import { CurrentUser, type CurrentUserPayload } from '../core/current-user.decorator';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../core/current-user.decorator';
 import { RolUsuario } from '@prisma/client';
 
 @Controller('cortes-caja')

@@ -1,8 +1,4 @@
-import {
-  IsOptional,
-  IsDate,
-  IsUUID,
-} from 'class-validator';
+import { IsOptional, IsDate, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FindCortesFiltersDto {

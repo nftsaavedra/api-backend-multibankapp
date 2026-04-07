@@ -8,18 +8,17 @@ import {
   MovimientoAdministrativo,
   EstadoMovimiento,
   EstadoConciliacion,
-  RolUsuario,
 } from '@prisma/client';
 import type { CreateMovimientoDto } from './dto';
 import type { FindMovimientosFiltersDto } from './dto';
-
-
 
 @Injectable()
 export class MovimientosService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(filters?: FindMovimientosFiltersDto): Promise<MovimientoAdministrativo[]> {
+  async findAll(
+    filters?: FindMovimientosFiltersDto,
+  ): Promise<MovimientoAdministrativo[]> {
     const where: Record<string, unknown> = {};
 
     if (filters?.operadorId) {
@@ -69,7 +68,6 @@ export class MovimientosService {
   async create(
     dto: CreateMovimientoDto,
     operadorId: string,
-    operadorRol: RolUsuario,
   ): Promise<MovimientoAdministrativo> {
     if (dto.cuentaOrigenId === dto.cuentaDestinoId) {
       throw new BadRequestException(
@@ -133,11 +131,16 @@ export class MovimientosService {
     });
   }
 
-  async aprobar(id: string, aprobadorId: string): Promise<MovimientoAdministrativo> {
+  async aprobar(
+    id: string,
+    aprobadorId: string,
+  ): Promise<MovimientoAdministrativo> {
     const movimiento = await this.findById(id);
 
     if (movimiento.estado_aprobacion !== EstadoMovimiento.PENDIENTE) {
-      throw new BadRequestException('El movimiento no está pendiente de aprobación');
+      throw new BadRequestException(
+        'El movimiento no está pendiente de aprobación',
+      );
     }
 
     return this.prisma.movimientoAdministrativo.update({
@@ -153,7 +156,9 @@ export class MovimientosService {
     const movimiento = await this.findById(id);
 
     if (movimiento.estado_aprobacion !== EstadoMovimiento.PENDIENTE) {
-      throw new BadRequestException('El movimiento no está pendiente de aprobación');
+      throw new BadRequestException(
+        'El movimiento no está pendiente de aprobación',
+      );
     }
 
     return this.prisma.movimientoAdministrativo.update({

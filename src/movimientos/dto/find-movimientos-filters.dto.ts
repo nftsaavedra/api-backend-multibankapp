@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsDate,
-  IsUUID,
-} from 'class-validator';
+import { IsOptional, IsEnum, IsDate, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EstadoMovimiento, EstadoConciliacion } from '@prisma/client';
 

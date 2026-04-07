@@ -4,6 +4,6 @@ import { SetupService } from './setup.service';
 
 @Module({
   controllers: [SetupController],
-  providers: [SetupService]
+  providers: [SetupService],
 })
 export class SetupModule {}

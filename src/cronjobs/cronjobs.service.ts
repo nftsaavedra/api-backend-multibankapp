@@ -4,7 +4,11 @@ import { PrismaService } from '../prisma.service';
 import { EstadoMovimiento } from '@prisma/client';
 
 export interface Anomalia {
-  tipo: 'SALDO_NEGATIVO' | 'MOVIMIENTO_PENDIENTE_VIEJO' | 'DESCUADRE' | 'ANOMALIA_IA';
+  tipo:
+    | 'SALDO_NEGATIVO'
+    | 'MOVIMIENTO_PENDIENTE_VIEJO'
+    | 'DESCUADRE'
+    | 'ANOMALIA_IA';
   descripcion: string;
   entidadId?: string;
   movimientoId?: string;
@@ -59,9 +63,9 @@ export class CronjobsService {
       if (Number(entidad.saldo_actual) < 0) {
         anomalias.push({
           tipo: 'SALDO_NEGATIVO',
-          descripcion: `Entidad ${entidad.nombre} tiene saldo negativo: ${entidad.saldo_actual}`,
+          descripcion: `Entidad ${entidad.nombre} tiene saldo negativo: ${String(entidad.saldo_actual)}`,
           entidadId: entidad.id,
-          detalles: { saldo: entidad.saldo_actual },
+          detalles: { saldo: String(entidad.saldo_actual) },
         });
       }
     }
@@ -81,19 +85,21 @@ export class CronjobsService {
 
     return movimientos.map((mov) => ({
       tipo: 'MOVIMIENTO_PENDIENTE_VIEJO' as const,
-      descripcion: `Movimiento pendiente de aprobación desde ${mov.fecha_registro}`,
+      descripcion: `Movimiento pendiente de aprobación desde ${mov.fecha_registro.toISOString()}`,
       movimientoId: mov.id,
       detalles: {
-        monto: mov.monto,
+        monto: String(mov.monto),
         concepto: mov.concepto,
-        fechaRegistro: mov.fecha_registro,
+        fechaRegistro: mov.fecha_registro.toISOString(),
       },
     }));
   }
 
   private async detectarAnomaliasVectoriales(): Promise<Anomalia[]> {
     try {
-      const cortesConFingerprint = await this.prisma.$queryRaw<VectorAnomalyResult[]>`
+      const cortesConFingerprint = await this.prisma.$queryRaw<
+        VectorAnomalyResult[]
+      >`
         SELECT id, ia_fingerprint
         FROM "CorteCaja"
         WHERE ia_fingerprint IS NOT NULL
@@ -114,7 +120,9 @@ export class CronjobsService {
         for (let j = i + 1; j < cortesConFingerprint.length; j++) {
           const corteComparacion = cortesConFingerprint[j];
 
-          const distanceResult = await this.prisma.$queryRaw<{ distance: number }[]>`
+          const distanceResult = await this.prisma.$queryRaw<
+            { distance: number }[]
+          >`
             SELECT ${corteActual.ia_fingerprint}::vector <=> ${corteComparacion.ia_fingerprint}::vector AS distance
           `;
 

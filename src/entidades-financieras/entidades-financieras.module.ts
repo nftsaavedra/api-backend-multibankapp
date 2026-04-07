@@ -4,6 +4,6 @@ import { EntidadesFinancierasService } from './entidades-financieras.service';
 
 @Module({
   controllers: [EntidadesFinancierasController],
-  providers: [EntidadesFinancierasService]
+  providers: [EntidadesFinancierasService],
 })
 export class EntidadesFinancierasModule {}

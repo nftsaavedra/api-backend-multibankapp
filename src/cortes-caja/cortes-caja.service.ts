@@ -24,10 +24,12 @@ export class CortesCajaService {
     if (filters?.fechaDesde || filters?.fechaHasta) {
       where.fecha_corte_ejecucion = {};
       if (filters.fechaDesde) {
-        (where.fecha_corte_ejecucion as Record<string, Date>).gte = filters.fechaDesde;
+        (where.fecha_corte_ejecucion as Record<string, Date>).gte =
+          filters.fechaDesde;
       }
       if (filters.fechaHasta) {
-        (where.fecha_corte_ejecucion as Record<string, Date>).lte = filters.fechaHasta;
+        (where.fecha_corte_ejecucion as Record<string, Date>).lte =
+          filters.fechaHasta;
       }
     }
 
@@ -47,7 +49,9 @@ export class CortesCajaService {
     return corte;
   }
 
-  async findUltimoCortePorOperador(operadorId: string): Promise<CorteCaja | null> {
+  async findUltimoCortePorOperador(
+    operadorId: string,
+  ): Promise<CorteCaja | null> {
     return this.prisma.corteCaja.findFirst({
       where: { operador_id: operadorId },
       orderBy: { fecha_corte_ejecucion: 'desc' },

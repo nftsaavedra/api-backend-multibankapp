@@ -7,7 +7,11 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
-import { EntidadesFinancierasService, type CreateEntidadDto, type UpdateEntidadDto } from './entidades-financieras.service';
+import {
+  EntidadesFinancierasService,
+  type CreateEntidadDto,
+  type UpdateEntidadDto,
+} from './entidades-financieras.service';
 import { JwtAuthGuard } from '../core/jwt-auth.guard';
 import { RolesGuard } from '../core/roles.guard';
 import { Roles } from '../core/roles.decorator';

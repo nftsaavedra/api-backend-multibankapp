@@ -1,11 +1,4 @@
-import {
-  IsString,
-  IsNumber,
-  IsOptional,
-  IsEnum,
-  IsDate,
-  Min,
-} from 'class-validator';
+import { IsNumber, IsOptional, IsEnum, IsDate, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoCorte } from '@prisma/client';
 

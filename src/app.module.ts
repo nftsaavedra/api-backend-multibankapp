@@ -24,7 +24,7 @@ import { AppController } from './app.controller';
       {
         name: 'auth',
         ttl: 60000, // 1 minuto
-        limit: 5,   // 5 intentos por minuto para auth
+        limit: 5, // 5 intentos por minuto para auth
       },
     ]),
     CoreModule,
