@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { CorteCaja, EstadoConciliacion, EstadoMovimiento, TipoCorte } from '@prisma/client';
 import { DateTime } from 'luxon';
 import type { CreateCorteDto, FindCortesFiltersDto } from './dto';
+import { BalanceAdjusterService } from './balance-adjuster.service';
 
 const TIMEZONE = 'America/Lima';
 
@@ -22,7 +23,10 @@ export interface CorteResult {
 
 @Injectable()
 export class CortesCajaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly balanceAdjuster: BalanceAdjusterService,
+  ) {}
 
   async findAll(filters?: FindCortesFiltersDto): Promise<CorteCaja[]> {
     const where: Record<string, unknown> = {};
@@ -275,10 +279,18 @@ export class CortesCajaService {
 
       // 8. AJUSTAR SALDOS si hay diferencias significativas
       if (Math.abs(diferenciaEfectivo) > 0.01) {
-        await this.ajustarSaldosCuentas(tx, cuentasEfectivo, diferenciaEfectivo);
+        await this.balanceAdjuster.adjustProportionally(
+          tx,
+          cuentasEfectivo,
+          diferenciaEfectivo,
+        );
       }
       if (Math.abs(diferenciaDigital) > 0.01) {
-        await this.ajustarSaldosCuentas(tx, cuentasDigital, diferenciaDigital);
+        await this.balanceAdjuster.adjustProportionally(
+          tx,
+          cuentasDigital,
+          diferenciaDigital,
+        );
       }
 
       // 9. REGISTRAR MOVIMIENTO DE COMISIÓN si hay excedente declarado
@@ -332,39 +344,43 @@ export class CortesCajaService {
   }
 
   /**
-   * Ajusta saldos de cuentas proporcionalmente
+   * Obtiene cortes por tipo de corte
    */
-  private async ajustarSaldosCuentas(
-    tx: any,
-    cuentas: any[],
-    diferencia: number,
-  ) {
-    if (cuentas.length === 0 || Math.abs(diferencia) < 0.01) return;
+  async findByType(
+    tipoCorte: TipoCorte,
+    operadorId?: string,
+  ): Promise<CorteCaja[]> {
+    return this.prisma.corteCaja.findMany({
+      where: {
+        tipo_corte: tipoCorte,
+        ...(operadorId && { operador_id: operadorId }),
+      },
+      orderBy: { fecha_corte_ejecucion: 'desc' },
+    });
+  }
 
-    const totalSistema = cuentas.reduce(
-      (sum, c) => sum + Number(c.saldo_actual),
-      0,
-    );
+  /**
+   * Obtiene el último corte de un operador en una fecha específica
+   */
+  async getLatestByOperatorAndDate(
+    operadorId: string,
+    fecha: Date,
+  ): Promise<CorteCaja | null> {
+    const startOfDay = new Date(fecha);
+    startOfDay.setHours(0, 0, 0, 0);
 
-    if (totalSistema === 0) {
-      // Si no hay saldo en sistema, distribuir equitativamente
-      const ajustePorCuenta = diferencia / cuentas.length;
-      for (const cuenta of cuentas) {
-        await tx.entidadFinanciera.update({
-          where: { id: cuenta.id },
-          data: { saldo_actual: Number(cuenta.saldo_actual) + ajustePorCuenta },
-        });
-      }
-    } else {
-      // Distribuir proporcionalmente al saldo actual
-      for (const cuenta of cuentas) {
-        const proporcion = Number(cuenta.saldo_actual) / totalSistema;
-        const ajuste = diferencia * proporcion;
-        await tx.entidadFinanciera.update({
-          where: { id: cuenta.id },
-          data: { saldo_actual: Number(cuenta.saldo_actual) + ajuste },
-        });
-      }
-    }
+    const endOfDay = new Date(fecha);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return this.prisma.corteCaja.findFirst({
+      where: {
+        operador_id: operadorId,
+        fecha_corte_ejecucion: {
+          gte: startOfDay,
+          lte: endOfDay,
+        },
+      },
+      orderBy: { fecha_corte_ejecucion: 'desc' },
+    });
   }
 }

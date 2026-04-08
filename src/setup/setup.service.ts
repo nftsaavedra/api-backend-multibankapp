@@ -51,8 +51,8 @@ export class SetupService {
 
       const entidadesBase = [
         {
-          tipo: 'FISICA',
-          nombre: 'Caja Efectivo',
+          tipo: 'EFECTIVO',
+          nombre: 'Caja Principal',
           saldo_actual: 0,
           activo: true,
         },
@@ -71,12 +71,6 @@ export class SetupService {
         {
           tipo: 'DIGITAL',
           nombre: 'Caja Piura',
-          saldo_actual: 0,
-          activo: true,
-        },
-        {
-          tipo: 'FISICA',
-          nombre: 'Ingresos por Comisión',
           saldo_actual: 0,
           activo: true,
         },

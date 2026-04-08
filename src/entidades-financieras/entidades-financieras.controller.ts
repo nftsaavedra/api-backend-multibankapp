@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -47,5 +48,20 @@ export class EntidadesFinancierasController {
     dto: UpdateEntidadDto,
   ) {
     return this.service.update(id, dto);
+  }
+
+  @Patch(':id/saldo')
+  @Roles(RolUsuario.SUPERVISOR)
+  async updateSaldo(
+    @Param('id') id: string,
+    @Body('nuevoSaldo') nuevoSaldo: string,
+  ) {
+    return this.service.updateSaldo(id, parseFloat(nuevoSaldo));
+  }
+
+  @Delete(':id')
+  @Roles(RolUsuario.SUPERVISOR)
+  async delete(@Param('id') id: string) {
+    return this.service.softDelete(id);
   }
 }

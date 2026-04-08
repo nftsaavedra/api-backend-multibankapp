@@ -55,4 +55,12 @@ export class EntidadesFinancierasService {
       data: { saldo_actual: nuevoSaldo },
     });
   }
+
+  async softDelete(id: string): Promise<void> {
+    await this.findById(id); // Validates existence
+    await this.prisma.entidadFinanciera.update({
+      where: { id },
+      data: { activo: false },
+    });
+  }
 }

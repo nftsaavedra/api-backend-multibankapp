@@ -11,10 +11,14 @@ import {
 } from '@prisma/client';
 import type { CreateMovimientoDto } from './dto';
 import type { FindMovimientosFiltersDto } from './dto';
+import { MovementValidatorService } from './movement-validator.service';
 
 @Injectable()
 export class MovimientosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly movementValidator: MovementValidatorService,
+  ) {}
 
   async findAll(
     filters?: FindMovimientosFiltersDto,
@@ -80,75 +84,96 @@ export class MovimientosService {
 
     return this.prisma.$transaction(async (tx) => {
       if (dto.esGasto) {
-        // EGRESO: cuentaOrigenId OBLIGATORIA
-        if (!dto.cuentaOrigenId) {
-          throw new BadRequestException('Para egresos, la cuenta origen es obligatoria');
-        }
-        
-        const cuentaOrigen = await tx.entidadFinanciera.findUnique({
-          where: { id: dto.cuentaOrigenId },
-        });
-        
-        if (!cuentaOrigen || !cuentaOrigen.activo) {
-          throw new BadRequestException('Cuenta origen no válida');
-        }
-        
-        if (Number(cuentaOrigen.saldo_actual) < dto.monto) {
-          throw new BadRequestException('Saldo insuficiente en cuenta origen');
-        }
-        
-        // Solo DESCUENTA de origen
-        await tx.entidadFinanciera.update({
-          where: { id: dto.cuentaOrigenId },
-          data: { saldo_actual: Number(cuentaOrigen.saldo_actual) - dto.monto },
-        });
-        
-        return tx.movimientoAdministrativo.create({
-          data: {
-            operador_id: operadorId,
-            concepto: dto.concepto,
-            monto: dto.monto,
-            estado_aprobacion: estadoAprobacion,
-            estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
-            cuenta_origen_id: dto.cuentaOrigenId,
-            cuenta_destino_id: dto.cuentaDestinoId || dto.cuentaOrigenId,
-            sync_id: dto.syncId || null,
-          },
-        });
-        
+        return this.createEgreso(tx, dto, operadorId, estadoAprobacion);
       } else {
-        // INGRESO: cuentaDestinoId OBLIGATORIA
-        if (!dto.cuentaDestinoId) {
-          throw new BadRequestException('Para ingresos, la cuenta destino es obligatoria');
-        }
-        
-        const cuentaDestino = await tx.entidadFinanciera.findUnique({
-          where: { id: dto.cuentaDestinoId },
-        });
-        
-        if (!cuentaDestino || !cuentaDestino.activo) {
-          throw new BadRequestException('Cuenta destino no válida');
-        }
-        
-        // Solo SUMA a destino
-        await tx.entidadFinanciera.update({
-          where: { id: dto.cuentaDestinoId },
-          data: { saldo_actual: Number(cuentaDestino.saldo_actual) + dto.monto },
-        });
-        
-        return tx.movimientoAdministrativo.create({
-          data: {
-            operador_id: operadorId,
-            concepto: dto.concepto,
-            monto: dto.monto,
-            estado_aprobacion: estadoAprobacion,
-            estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
-            cuenta_origen_id: dto.cuentaOrigenId ? dto.cuentaOrigenId : undefined,
-            cuenta_destino_id: dto.cuentaDestinoId,
-            sync_id: dto.syncId || null,
-          },
-        });
+        return this.createIngreso(tx, dto, operadorId, estadoAprobacion);
       }
+    });
+  }
+
+  /**
+   * Crea un movimiento de egreso (gasto) con validación y descuento de saldo
+   */
+  private async createEgreso(
+    tx: any,
+    dto: CreateMovimientoDto,
+    operadorId: string,
+    estadoAprobacion: EstadoMovimiento,
+  ): Promise<MovimientoAdministrativo> {
+    // Validar cuenta origen obligatoria para egresos
+    if (!dto.cuentaOrigenId) {
+      throw new BadRequestException('Para egresos, la cuenta origen es obligatoria');
+    }
+
+    // Validar y bloquear cuenta origen
+    await this.movementValidator.validateAndLockAccount(
+      tx,
+      dto.cuentaOrigenId,
+      dto.monto,
+      'origin',
+    );
+
+    // Descontar saldo de origen
+    await tx.entidadFinanciera.update({
+      where: { id: dto.cuentaOrigenId },
+      data: { saldo_actual: { decrement: dto.monto } },
+    });
+
+    // Crear movimiento
+    return tx.movimientoAdministrativo.create({
+      data: {
+        operador_id: operadorId,
+        concepto: dto.concepto,
+        monto: dto.monto,
+        estado_aprobacion: estadoAprobacion,
+        estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
+        cuenta_origen_id: dto.cuentaOrigenId,
+        cuenta_destino_id: dto.cuentaDestinoId || dto.cuentaOrigenId,
+        sync_id: dto.syncId || null,
+      },
+    });
+  }
+
+  /**
+   * Crea un movimiento de ingreso con validación y suma de saldo
+   */
+  private async createIngreso(
+    tx: any,
+    dto: CreateMovimientoDto,
+    operadorId: string,
+    estadoAprobacion: EstadoMovimiento,
+  ): Promise<MovimientoAdministrativo> {
+    // Validar cuenta destino obligatoria para ingresos
+    if (!dto.cuentaDestinoId) {
+      throw new BadRequestException('Para ingresos, la cuenta destino es obligatoria');
+    }
+
+    // Validar y bloquear cuenta destino
+    await this.movementValidator.validateAndLockAccount(
+      tx,
+      dto.cuentaDestinoId,
+      0,
+      'destination',
+    );
+
+    // Sumar saldo a destino
+    await tx.entidadFinanciera.update({
+      where: { id: dto.cuentaDestinoId },
+      data: { saldo_actual: { increment: dto.monto } },
+    });
+
+    // Crear movimiento
+    return tx.movimientoAdministrativo.create({
+      data: {
+        operador_id: operadorId,
+        concepto: dto.concepto,
+        monto: dto.monto,
+        estado_aprobacion: estadoAprobacion,
+        estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
+        cuenta_origen_id: dto.cuentaOrigenId ? dto.cuentaOrigenId : undefined,
+        cuenta_destino_id: dto.cuentaDestinoId,
+        sync_id: dto.syncId || null,
+      },
     });
   }
 
