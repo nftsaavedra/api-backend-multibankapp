@@ -69,12 +69,7 @@ export class MovimientosService {
     dto: CreateMovimientoDto,
     operadorId: string,
   ): Promise<MovimientoAdministrativo> {
-    if (dto.cuentaOrigenId === dto.cuentaDestinoId) {
-      throw new BadRequestException(
-        'La cuenta origen y destino deben ser diferentes',
-      );
-    }
-
+    // Validar monto
     if (dto.monto <= 0) {
       throw new BadRequestException('El monto debe ser mayor a cero');
     }
@@ -84,50 +79,76 @@ export class MovimientosService {
       : EstadoMovimiento.APROBADO;
 
     return this.prisma.$transaction(async (tx) => {
-      // Bloqueo pesimista: leer cuentas con FOR UPDATE
-      const cuentaOrigen = await tx.entidadFinanciera.findUnique({
-        where: { id: dto.cuentaOrigenId },
-      });
-      const cuentaDestino = await tx.entidadFinanciera.findUnique({
-        where: { id: dto.cuentaDestinoId },
-      });
-
-      if (!cuentaOrigen || !cuentaOrigen.activo) {
-        throw new BadRequestException('Cuenta origen no válida');
+      if (dto.esGasto) {
+        // EGRESO: cuentaOrigenId OBLIGATORIA
+        if (!dto.cuentaOrigenId) {
+          throw new BadRequestException('Para egresos, la cuenta origen es obligatoria');
+        }
+        
+        const cuentaOrigen = await tx.entidadFinanciera.findUnique({
+          where: { id: dto.cuentaOrigenId },
+        });
+        
+        if (!cuentaOrigen || !cuentaOrigen.activo) {
+          throw new BadRequestException('Cuenta origen no válida');
+        }
+        
+        if (Number(cuentaOrigen.saldo_actual) < dto.monto) {
+          throw new BadRequestException('Saldo insuficiente en cuenta origen');
+        }
+        
+        // Solo DESCUENTA de origen
+        await tx.entidadFinanciera.update({
+          where: { id: dto.cuentaOrigenId },
+          data: { saldo_actual: Number(cuentaOrigen.saldo_actual) - dto.monto },
+        });
+        
+        return tx.movimientoAdministrativo.create({
+          data: {
+            operador_id: operadorId,
+            concepto: dto.concepto,
+            monto: dto.monto,
+            estado_aprobacion: estadoAprobacion,
+            estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
+            cuenta_origen_id: dto.cuentaOrigenId,
+            cuenta_destino_id: dto.cuentaDestinoId || dto.cuentaOrigenId,
+            sync_id: dto.syncId || null,
+          },
+        });
+        
+      } else {
+        // INGRESO: cuentaDestinoId OBLIGATORIA
+        if (!dto.cuentaDestinoId) {
+          throw new BadRequestException('Para ingresos, la cuenta destino es obligatoria');
+        }
+        
+        const cuentaDestino = await tx.entidadFinanciera.findUnique({
+          where: { id: dto.cuentaDestinoId },
+        });
+        
+        if (!cuentaDestino || !cuentaDestino.activo) {
+          throw new BadRequestException('Cuenta destino no válida');
+        }
+        
+        // Solo SUMA a destino
+        await tx.entidadFinanciera.update({
+          where: { id: dto.cuentaDestinoId },
+          data: { saldo_actual: Number(cuentaDestino.saldo_actual) + dto.monto },
+        });
+        
+        return tx.movimientoAdministrativo.create({
+          data: {
+            operador_id: operadorId,
+            concepto: dto.concepto,
+            monto: dto.monto,
+            estado_aprobacion: estadoAprobacion,
+            estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
+            cuenta_origen_id: dto.cuentaOrigenId ? dto.cuentaOrigenId : undefined,
+            cuenta_destino_id: dto.cuentaDestinoId,
+            sync_id: dto.syncId || null,
+          },
+        });
       }
-      if (!cuentaDestino || !cuentaDestino.activo) {
-        throw new BadRequestException('Cuenta destino no válida');
-      }
-
-      if (Number(cuentaOrigen.saldo_actual) < dto.monto) {
-        throw new BadRequestException('Saldo insuficiente en cuenta origen');
-      }
-
-      const nuevoSaldoOrigen = Number(cuentaOrigen.saldo_actual) - dto.monto;
-      const nuevoSaldoDestino = Number(cuentaDestino.saldo_actual) + dto.monto;
-
-      await tx.entidadFinanciera.update({
-        where: { id: dto.cuentaOrigenId },
-        data: { saldo_actual: nuevoSaldoOrigen },
-      });
-
-      await tx.entidadFinanciera.update({
-        where: { id: dto.cuentaDestinoId },
-        data: { saldo_actual: nuevoSaldoDestino },
-      });
-
-      return tx.movimientoAdministrativo.create({
-        data: {
-          operador_id: operadorId,
-          concepto: dto.concepto,
-          monto: dto.monto,
-          estado_aprobacion: estadoAprobacion,
-          estado_conciliacion: EstadoConciliacion.NO_CONCILIADO,
-          cuenta_origen_id: dto.cuentaOrigenId,
-          cuenta_destino_id: dto.cuentaDestinoId,
-          sync_id: dto.syncId || null,
-        },
-      });
     });
   }
 

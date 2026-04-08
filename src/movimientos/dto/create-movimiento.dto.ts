@@ -25,10 +25,12 @@ export class CreateMovimientoDto {
   esGasto?: boolean;
 
   @IsUUID()
-  cuentaOrigenId: string;
+  @IsOptional()
+  cuentaOrigenId?: string;  // OPCIONAL para ingresos
 
   @IsUUID()
-  cuentaDestinoId: string;
+  @IsOptional()
+  cuentaDestinoId?: string;  // OPCIONAL (pero validado en service)
 
   @IsString()
   @IsOptional()

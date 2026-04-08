@@ -10,6 +10,7 @@ import { SyncModule } from './sync/sync.module';
 import { EntidadesFinancierasModule } from './entidades-financieras/entidades-financieras.module';
 import { CronjobsModule } from './cronjobs/cronjobs.module';
 import { SetupModule } from './setup/setup.module';
+import { ReportesModule } from './reportes/reportes.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -40,6 +41,7 @@ import { AppController } from './app.controller';
     EntidadesFinancierasModule,
     CronjobsModule,
     SetupModule,
+    ReportesModule,
   ],
   controllers: [AppController],
   providers: [

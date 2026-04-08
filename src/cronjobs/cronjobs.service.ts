@@ -101,7 +101,7 @@ export class CronjobsService {
         VectorAnomalyResult[]
       >`
         SELECT id, ia_fingerprint
-        FROM "CorteCaja"
+        FROM "cortes_caja"
         WHERE ia_fingerprint IS NOT NULL
         ORDER BY fecha_corte_ejecucion DESC
         LIMIT 100

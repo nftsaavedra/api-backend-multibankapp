@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CorteCaja, EstadoConciliacion, TipoCorte } from '@prisma/client';
+import { CorteCaja, EstadoConciliacion, EstadoMovimiento, TipoCorte } from '@prisma/client';
 import { DateTime } from 'luxon';
 import type { CreateCorteDto, FindCortesFiltersDto } from './dto';
 
@@ -180,7 +180,7 @@ export class CortesCajaService {
     const fechaInicioBloque =
       dto.fechaInicioBloque || DateTime.now().setZone(TIMEZONE).toJSDate();
 
-    // Validar secuencialidad de cortes
+    // 1. Validar secuencialidad de cortes
     const validacion = await this.validarSecuenciaCortes(
       operadorId,
       dto.tipoCorte,
@@ -188,10 +188,55 @@ export class CortesCajaService {
     );
 
     return this.prisma.$transaction(async (tx) => {
-      // Si es corrección, buscar el corte a corregir
+      // 2. Calcular saldos actuales del sistema
+      // IMPORTANTE: Excluir cuentas de comisión (no son parte del dinero real en circulación)
+      const todasCuentas = await tx.entidadFinanciera.findMany({
+        where: { 
+          activo: true,
+          es_cuenta_comision: false,  // NO incluir cuentas de comisión
+        },
+      });
+
+      // Clasificar cuentas por tipo
+      const cuentasEfectivo = todasCuentas.filter(c =>
+        c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
+      );
+      const cuentasDigital = todasCuentas.filter(c =>
+        !c.tipo.includes('EFECTIVO') && !c.tipo.includes('CAJA'),
+      );
+
+      // Sumar saldos
+      const saldoEfectivoSistema = cuentasEfectivo.reduce(
+        (sum, c) => sum + Number(c.saldo_actual),
+        0,
+      );
+      const saldoDigitalSistema = cuentasDigital.reduce(
+        (sum, c) => sum + Number(c.saldo_actual),
+        0,
+      );
+
+      // 3. Calcular diferencias
+      const diferenciaEfectivo = dto.saldoEfectivoDeclarado - saldoEfectivoSistema;
+      const diferenciaDigital = dto.saldoDigitalDeclarado - saldoDigitalSistema;
+
+      // 4. Validar mínimo operativo
+      const cumpleMinimo = dto.operacionesKasnet >= 350;
+
+      // 5. Generar observaciones si es necesario
+      const observaciones: string[] = [];
+      if (!cumpleMinimo) {
+        observaciones.push(`⚠️ Solo ${dto.operacionesKasnet}/350 operaciones. Mínimo no cumplido.`);
+      }
+      if (Math.abs(diferenciaEfectivo) > 0.01) {
+        observaciones.push(`📊 Ajuste efectivo: S/${diferenciaEfectivo.toFixed(2)}`);
+      }
+      if (Math.abs(diferenciaDigital) > 0.01) {
+        observaciones.push(`📊 Ajuste digital: S/${diferenciaDigital.toFixed(2)}`);
+      }
+
+      // 6. Si es corrección, buscar el corte a corregir
       let corteAnuladoId: string | null = null;
       if (dto.esCorreccion && dto.motivoCorreccion) {
-        // Buscar el último corte del mismo tipo para anularlo
         const ultimoCorteMismoTipo = await tx.corteCaja.findFirst({
           where: {
             operador_id: operadorId,
@@ -206,6 +251,7 @@ export class CortesCajaService {
         }
       }
 
+      // 7. Crear corte con métricas
       const corte = await tx.corteCaja.create({
         data: {
           operador_id: operadorId,
@@ -215,12 +261,57 @@ export class CortesCajaService {
           saldo_digital_declarado: dto.saldoDigitalDeclarado,
           excedente_comision: dto.excedenteComision,
           operaciones_kasnet: dto.operacionesKasnet,
+          saldo_efectivo_sistema: saldoEfectivoSistema,
+          saldo_digital_sistema: saldoDigitalSistema,
+          diferencia_efectivo: diferenciaEfectivo,
+          diferencia_digital: diferenciaDigital,
+          cumple_minimo_operativo: cumpleMinimo,
+          observaciones: observaciones.length > 0 ? observaciones.join(' | ') : null,
           es_correccion: dto.esCorreccion || false,
           motivo_correccion: dto.motivoCorreccion || null,
           corte_anulado_id: corteAnuladoId,
         },
       });
 
+      // 8. AJUSTAR SALDOS si hay diferencias significativas
+      if (Math.abs(diferenciaEfectivo) > 0.01) {
+        await this.ajustarSaldosCuentas(tx, cuentasEfectivo, diferenciaEfectivo);
+      }
+      if (Math.abs(diferenciaDigital) > 0.01) {
+        await this.ajustarSaldosCuentas(tx, cuentasDigital, diferenciaDigital);
+      }
+
+      // 9. REGISTRAR MOVIMIENTO DE COMISIÓN si hay excedente declarado
+      // IMPORTANTE: La comisión YA está incluida en el saldo declarado, NO se incrementa el saldo
+      // Solo se crea el movimiento para trazabilidad y reportes
+      if (dto.excedenteComision > 0) {
+        // Buscar la cuenta principal de efectivo para vincular el movimiento
+        const cuentaEfectivoPrincipal = cuentasEfectivo.length > 0 
+          ? cuentasEfectivo[0] // Usar la primera cuenta de efectivo disponible
+          : null;
+
+        if (cuentaEfectivoPrincipal) {
+          // Crear movimiento de ingreso por comisión (SOLO para registro/trazabilidad)
+          await tx.movimientoAdministrativo.create({
+            data: {
+              operador_id: operadorId,
+              concepto: `Comisión ${this.getNombreCorte(dto.tipoCorte)} - ${DateTime.now().setZone(TIMEZONE).toFormat('yyyy-MM-dd')}`,
+              monto: dto.excedenteComision,
+              estado_aprobacion: EstadoMovimiento.APROBADO,
+              estado_conciliacion: EstadoConciliacion.CONCILIADO,
+              cuenta_origen_id: null, // Ingreso sin origen específico
+              cuenta_destino_id: cuentaEfectivoPrincipal.id,
+              corte_id: corte.id, // Vincular al corte actual
+            },
+          });
+          
+          // NOTA: NO incrementamos el saldo aquí porque la comisión YA está incluida
+          // en el saldo_efectivo_declarado que el operador ingresó manualmente.
+          // El ajuste de saldos (paso 8) ya alineó los saldos del sistema con lo declarado.
+        }
+      }
+
+      // 10. Sellar movimientos pendientes
       const updateResult = await tx.movimientoAdministrativo.updateMany({
         where: {
           operador_id: operadorId,
@@ -238,5 +329,42 @@ export class CortesCajaService {
         advertencia: validacion.advertencia,
       };
     });
+  }
+
+  /**
+   * Ajusta saldos de cuentas proporcionalmente
+   */
+  private async ajustarSaldosCuentas(
+    tx: any,
+    cuentas: any[],
+    diferencia: number,
+  ) {
+    if (cuentas.length === 0 || Math.abs(diferencia) < 0.01) return;
+
+    const totalSistema = cuentas.reduce(
+      (sum, c) => sum + Number(c.saldo_actual),
+      0,
+    );
+
+    if (totalSistema === 0) {
+      // Si no hay saldo en sistema, distribuir equitativamente
+      const ajustePorCuenta = diferencia / cuentas.length;
+      for (const cuenta of cuentas) {
+        await tx.entidadFinanciera.update({
+          where: { id: cuenta.id },
+          data: { saldo_actual: Number(cuenta.saldo_actual) + ajustePorCuenta },
+        });
+      }
+    } else {
+      // Distribuir proporcionalmente al saldo actual
+      for (const cuenta of cuentas) {
+        const proporcion = Number(cuenta.saldo_actual) / totalSistema;
+        const ajuste = diferencia * proporcion;
+        await tx.entidadFinanciera.update({
+          where: { id: cuenta.id },
+          data: { saldo_actual: Number(cuenta.saldo_actual) + ajuste },
+        });
+      }
+    }
   }
 }

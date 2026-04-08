@@ -48,6 +48,7 @@ model EntidadFinanciera {
   nombre              String                     @unique
   saldo_actual        Decimal                    @db.Decimal(10, 2)
   activo              Boolean                    @default(true)
+  es_cuenta_comision  Boolean                    @default(false)  // NO incluir en cálculos de saldos del sistema
 
   movimientos_origen  MovimientoAdministrativo[] @relation("CuentaOrigen")
   movimientos_destino MovimientoAdministrativo[] @relation("CuentaDestino")
@@ -66,6 +67,14 @@ model CorteCaja {
   saldo_digital_declarado  Decimal @db.Decimal(10, 2)
   excedente_comision       Decimal @db.Decimal(10, 2)
   operaciones_kasnet       Int
+
+  // Métricas calculadas por el sistema
+  saldo_efectivo_sistema   Decimal? @db.Decimal(10, 2)
+  saldo_digital_sistema    Decimal? @db.Decimal(10, 2)
+  diferencia_efectivo      Decimal? @db.Decimal(10, 2)
+  diferencia_digital       Decimal? @db.Decimal(10, 2)
+  cumple_minimo_operativo  Boolean  @default(true)
+  observaciones            String?
 
   // Campos para correcciones
   es_correccion            Boolean  @default(false)
@@ -90,8 +99,8 @@ model MovimientoAdministrativo {
   estado_aprobacion     EstadoMovimiento   @default(APROBADO)
   estado_conciliacion   EstadoConciliacion @default(NO_CONCILIADO)
 
-  cuenta_origen_id      String
-  cuenta_destino_id     String
+  cuenta_origen_id      String?
+  cuenta_destino_id     String?
 
   fecha_registro        DateTime           @db.Timestamptz(3) @default(now())
   aprobado_por          String?
@@ -99,8 +108,8 @@ model MovimientoAdministrativo {
 
   operador              Usuario            @relation(fields: [operador_id], references: [id])
   corte_sellado         CorteCaja?         @relation(fields: [corte_id], references: [id])
-  cuenta_origen         EntidadFinanciera  @relation("CuentaOrigen", fields: [cuenta_origen_id], references: [id])
-  cuenta_destino        EntidadFinanciera  @relation("CuentaDestino", fields: [cuenta_destino_id], references: [id])
+  cuenta_origen         EntidadFinanciera? @relation("CuentaOrigen", fields: [cuenta_origen_id], references: [id])
+  cuenta_destino        EntidadFinanciera? @relation("CuentaDestino", fields: [cuenta_destino_id], references: [id])
 
   @@map("movimientos_administrativos")
 }
