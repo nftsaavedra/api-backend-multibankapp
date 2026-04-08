@@ -67,6 +67,11 @@ model CorteCaja {
   excedente_comision       Decimal @db.Decimal(10, 2)
   operaciones_kasnet       Int
 
+  // Campos para correcciones
+  es_correccion            Boolean  @default(false)
+  motivo_correccion        String?
+  corte_anulado_id         String?  @unique  // Referencia al corte que esta correccion anula
+  
   ia_fingerprint       String?
 
   operador             Usuario @relation(fields: [operador_id], references: [id])

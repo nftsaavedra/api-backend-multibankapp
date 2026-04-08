@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsEnum, IsDate, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsEnum, IsDate, Min, IsBoolean, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TipoCorte } from '@prisma/client';
 
@@ -30,4 +30,13 @@ export class CreateCorteDto {
   @IsOptional()
   @Type(() => Date)
   fechaInicioBloque?: Date;
+
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  esCorreccion?: boolean;
+
+  @IsString()
+  @IsOptional()
+  motivoCorreccion?: string;
 }
