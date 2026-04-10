@@ -45,14 +45,14 @@ export class MovimientosController {
     @Query('estadoAprobacion') estadoAprobacion?: EstadoMovimiento,
   ) {
     return this.service.findAll({
-      operadorId: user.rol === RolUsuario.OPERADOR ? user.userId : undefined,
+      operadorId: user.rol === RolUsuario.ADMIN ? undefined : user.userId,
       estadoConciliacion,
       estadoAprobacion,
     });
   }
 
   @Patch(':id/aprobar')
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async aprobar(
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserPayload,
@@ -61,7 +61,7 @@ export class MovimientosController {
   }
 
   @Patch(':id/rechazar')
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async rechazar(@Param('id') id: string) {
     return this.service.rechazar(id);
   }

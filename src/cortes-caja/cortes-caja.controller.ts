@@ -39,7 +39,7 @@ export class CortesCajaController {
     @Query('fechaHasta') fechaHasta?: string,
   ) {
     return this.service.findAll({
-      operadorId: user.rol === RolUsuario.OPERADOR ? user.userId : undefined,
+      operadorId: user.rol === RolUsuario.ADMIN ? undefined : user.userId,
       fechaDesde: fechaDesde ? new Date(fechaDesde) : undefined,
       fechaHasta: fechaHasta ? new Date(fechaHasta) : undefined,
     });
@@ -57,7 +57,7 @@ export class CortesCajaController {
   ) {
     return this.service.findByType(
       tipoCorte,
-      user.rol === RolUsuario.OPERADOR ? user.userId : undefined,
+      user.rol === RolUsuario.ADMIN ? undefined : user.userId,
     );
   }
 
@@ -68,5 +68,21 @@ export class CortesCajaController {
   ) {
     const searchDate = fecha ? new Date(fecha) : new Date();
     return this.service.getLatestByOperatorAndDate(user.userId, searchDate);
+  }
+
+  @Get('latest/ultimo')
+  async getUltimoCorte(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.findUltimoCorte(user.userId);
+  }
+
+  @Get('ultimo-para-comparacion')
+  @UseGuards(JwtAuthGuard)
+  async getUltimoCorteParaComparacion(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.getUltimoCorteParaComparacion(user.userId);
+  }
+
+  @Get('kasnet-acumulado')
+  async getKasnetAcumulado(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.getKasnetAcumuladoMes(user.userId);
   }
 }

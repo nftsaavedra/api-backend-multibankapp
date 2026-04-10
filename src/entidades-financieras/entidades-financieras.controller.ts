@@ -32,7 +32,7 @@ export class EntidadesFinancierasController {
   }
 
   @Post()
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async create(
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
     dto: CreateEntidadDto,
@@ -41,7 +41,7 @@ export class EntidadesFinancierasController {
   }
 
   @Patch(':id')
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async update(
     @Param('id') id: string,
     @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
@@ -51,7 +51,7 @@ export class EntidadesFinancierasController {
   }
 
   @Patch(':id/saldo')
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async updateSaldo(
     @Param('id') id: string,
     @Body('nuevoSaldo') nuevoSaldo: string,
@@ -60,7 +60,7 @@ export class EntidadesFinancierasController {
   }
 
   @Delete(':id')
-  @Roles(RolUsuario.SUPERVISOR)
+  @Roles(RolUsuario.ADMIN)
   async delete(@Param('id') id: string) {
     return this.service.softDelete(id);
   }

@@ -12,6 +12,7 @@ import { CronjobsModule } from './cronjobs/cronjobs.module';
 import { SetupModule } from './setup/setup.module';
 import { ReportesModule } from './reportes/reportes.module';
 import { AppController } from './app.controller';
+import { UsuariosModule } from './usuarios/usuarios.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { AppController } from './app.controller';
     CronjobsModule,
     SetupModule,
     ReportesModule,
+    UsuariosModule,
   ],
   controllers: [AppController],
   providers: [

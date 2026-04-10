@@ -5,6 +5,8 @@ import { RolUsuario } from '@prisma/client';
 
 export interface SetupStatus {
   initialized: boolean;
+  hasAdmin: boolean;
+  entitiesCount: number;
 }
 
 export interface InitSetupDto {
@@ -23,11 +25,19 @@ export class SetupService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getStatus(): Promise<SetupStatus> {
-    const supervisor = await this.prisma.usuario.findFirst({
-      where: { rol: RolUsuario.SUPERVISOR },
+    const admin = await this.prisma.usuario.findFirst({
+      where: { rol: RolUsuario.ADMIN },
     });
 
-    return { initialized: !!supervisor };
+    const entitiesCount = await this.prisma.entidadFinanciera.count({
+      where: { activo: true },
+    });
+
+    return {
+      initialized: !!admin,
+      hasAdmin: !!admin,
+      entitiesCount,
+    };
   }
 
   async initialize(dto: InitSetupDto): Promise<SetupResult> {
@@ -44,7 +54,7 @@ export class SetupService {
         data: {
           username: dto.username,
           password_hash: passwordHash,
-          rol: RolUsuario.SUPERVISOR,
+          rol: RolUsuario.ADMIN,
           activo: true,
         },
       });
