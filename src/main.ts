@@ -2,7 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as dotenv from 'dotenv';
+import helmet from 'helmet';
 import type { Request, Response, NextFunction } from 'express';
+import { Logger } from 'nestjs-pino';
 
 // Cargar variables de entorno antes de cualquier otra cosa
 dotenv.config();
@@ -12,12 +14,32 @@ dotenv.config();
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Security headers con Helmet
+  app.use(helmet());
+  app.use(helmet.noSniff());
+  app.use(helmet.frameguard({ action: 'deny' }));
+  app.use(helmet.xssFilter());
+  app.use(
+    helmet.hsts({
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    }),
+  );
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
       transformOptions: { enableImplicitConversion: true },
+      // Detallar errores de validación
+      exceptionFactory: (errors) => {
+        const messages = errors.map(
+          (err) => `${err.property}: ${Object.values(err.constraints || {}).join(', ')}`
+        );
+        return new Error(`Validation failed: ${messages.join(' | ')}`);
+      },
     }),
   );
 
@@ -65,7 +87,8 @@ async function bootstrap() {
   });
 
   await app.listen(process.env.PORT ?? 3000);
-  console.log(`Application is running on: ${await app.getUrl()}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  const logger = app.get(Logger);
+  logger.log(`Application is running on: ${await app.getUrl()}`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 void bootstrap();

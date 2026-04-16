@@ -66,7 +66,7 @@ export class SyncService {
         );
 
         procesados_exito.push(movimiento.syncId);
-      } catch (error) {
+      } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : 'Error desconocido';
         this.logger.error(
@@ -126,7 +126,7 @@ export class SyncService {
         syncId: dto.syncId,
         success: true,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Error desconocido';
       this.logger.error(

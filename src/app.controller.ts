@@ -14,7 +14,7 @@ export class AppController {
         timestamp: new Date().toISOString(),
         database: 'connected',
       };
-    } catch (error) {
+    } catch (error: unknown) {
       return {
         status: 'error',
         timestamp: new Date().toISOString(),

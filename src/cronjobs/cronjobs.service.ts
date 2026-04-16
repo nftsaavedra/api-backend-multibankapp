@@ -145,7 +145,7 @@ export class CronjobsService {
       }
 
       return anomalias;
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error('Error en detección de anomalías vectoriales:', error);
       return [];
     }

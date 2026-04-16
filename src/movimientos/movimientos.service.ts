@@ -8,10 +8,14 @@ import {
   MovimientoAdministrativo,
   EstadoMovimiento,
   EstadoConciliacion,
+  Prisma,
 } from '@prisma/client';
 import type { CreateMovimientoDto } from './dto';
 import type { FindMovimientosFiltersDto } from './dto';
 import { MovementValidatorService } from './movement-validator.service';
+
+// Tipo para transacciones
+type TxClient = Prisma.TransactionClient;
 
 @Injectable()
 export class MovimientosService {
@@ -95,7 +99,7 @@ export class MovimientosService {
    * Crea un movimiento de egreso (gasto) con validación y descuento de saldo
    */
   private async createEgreso(
-    tx: any,
+    tx: TxClient,
     dto: CreateMovimientoDto,
     operadorId: string,
     estadoAprobacion: EstadoMovimiento,
@@ -138,7 +142,7 @@ export class MovimientosService {
    * Crea un movimiento de ingreso con validación y suma de saldo
    */
   private async createIngreso(
-    tx: any,
+    tx: TxClient,
     dto: CreateMovimientoDto,
     operadorId: string,
     estadoAprobacion: EstadoMovimiento,

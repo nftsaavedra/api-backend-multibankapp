@@ -1,13 +1,33 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma.service';
 import { CurrentUserPayload } from '../core/current-user.decorator';
-import { randomBytes } from 'crypto';
+import { RolUsuario } from '@prisma/client';
+import { AUTH } from '../core/constants';
+import { TokenService } from './token.service';
+import { PasswordService } from './password.service';
+import { IsString, MinLength, MaxLength, Min } from 'class-validator';
 
-export interface LoginDto {
+export class LoginDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(50)
   username: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(100)
   password: string;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  currentPassword: string;
+
+  @IsString()
+  @MinLength(AUTH.MIN_PASSWORD_LENGTH)
+  @MaxLength(100)
+  newPassword: string;
 }
 
 export interface AuthResponse {
@@ -16,90 +36,41 @@ export interface AuthResponse {
   user: CurrentUserPayload;
 }
 
+/**
+ * Servicio de Autenticación - Orquestador
+ * SRP: Coordina los servicios de tokens y passwords para autenticación
+ */
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly tokenService: TokenService,
+    private readonly passwordService: PasswordService,
   ) {}
 
-  private generateRefreshToken(): string {
-    return randomBytes(40).toString('hex');
-  }
-
-  private async storeRefreshToken(
-    token: string,
-    usuarioId: string,
-    expiresInDays: number = 7,
-  ): Promise<void> {
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expiresInDays);
-
-    await this.prisma.refreshToken.create({
-      data: {
-        token,
-        usuario_id: usuarioId,
-        expires_at: expiresAt,
-      },
-    });
-  }
-
-  private async revokeRefreshToken(token: string): Promise<void> {
-    await this.prisma.refreshToken.updateMany({
-      where: { token },
-      data: { revoked_at: new Date() },
-    });
-  }
-
-  private async revokeAllUserTokens(usuarioId: string): Promise<void> {
-    await this.prisma.refreshToken.updateMany({
-      where: { usuario_id: usuarioId, revoked_at: null },
-      data: { revoked_at: new Date() },
-    });
-  }
-
-  private async validateRefreshToken(token: string): Promise<boolean> {
-    const storedToken = await this.prisma.refreshToken.findUnique({
-      where: { token },
-    });
-
-    if (!storedToken) return false;
-    if (storedToken.revoked_at) return false;
-    if (new Date() > storedToken.expires_at) return false;
-
-    return true;
-  }
-
   async login(dto: LoginDto): Promise<AuthResponse> {
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { username: dto.username },
-    });
+    // Validar credenciales usando PasswordService
+    const validation = await this.passwordService.validateCredentials(dto.username, dto.password);
 
-    if (!usuario || !usuario.activo) {
+    if (!validation.valid || !validation.user) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const isPasswordValid = await argon2.verify(
-      usuario.password_hash,
-      dto.password,
-    );
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Credenciales inválidas');
-    }
-
+    const usuario = validation.user;
     const payload: CurrentUserPayload = {
       userId: usuario.id,
       username: usuario.username,
       rol: usuario.rol,
     };
 
-    const access_token = this.jwtService.sign(payload, { expiresIn: '8h' });
-    const refresh_token = this.generateRefreshToken();
+    // Generar tokens usando TokenService
+    const access_token = this.tokenService.generateAccessToken(payload);
+    const refresh_token = this.tokenService.generateRefreshToken();
 
     // Revocar tokens anteriores y guardar nuevo
-    await this.revokeAllUserTokens(usuario.id);
-    await this.storeRefreshToken(refresh_token, usuario.id);
+    await this.tokenService.revokeAllUserTokens(usuario.id);
+    await this.tokenService.storeRefreshToken(refresh_token, usuario.id);
 
     return {
       access_token,
@@ -109,8 +80,8 @@ export class AuthService {
   }
 
   async refreshToken(refreshToken: string): Promise<AuthResponse> {
-    // Validar token contra DB
-    const isValid = await this.validateRefreshToken(refreshToken);
+    // Validar token usando TokenService
+    const isValid = await this.tokenService.validateRefreshToken(refreshToken);
     if (!isValid) {
       throw new UnauthorizedException('Token de refresco inválido o revocado');
     }
@@ -138,13 +109,12 @@ export class AuthService {
       rol: usuario.rol,
     };
 
-    // Generar nuevos tokens
-    const access_token = this.jwtService.sign(newPayload, { expiresIn: '8h' });
-    const new_refresh_token = this.generateRefreshToken();
+    // Generar nuevos tokens usando TokenService
+    const access_token = this.tokenService.generateAccessToken(newPayload);
+    const new_refresh_token = this.tokenService.generateRefreshToken();
 
-    // Revocar token anterior y guardar nuevo
-    await this.revokeRefreshToken(refreshToken);
-    await this.storeRefreshToken(new_refresh_token, usuario.id);
+    // Rotar tokens usando TokenService
+    await this.tokenService.rotateRefreshToken(refreshToken, usuario.id);
 
     return {
       access_token,
@@ -154,10 +124,53 @@ export class AuthService {
   }
 
   async logout(refreshToken: string): Promise<void> {
-    await this.revokeRefreshToken(refreshToken);
+    await this.tokenService.revokeRefreshToken(refreshToken);
   }
 
   async logoutAll(usuarioId: string): Promise<void> {
-    await this.revokeAllUserTokens(usuarioId);
+    await this.tokenService.revokeAllUserTokens(usuarioId);
+  }
+
+  /**
+   * Cambio de password con validación de password actual
+   * Revoca todas las sesiones activas por seguridad
+   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ success: boolean; message: string }> {
+    // Validar password actual usando PasswordService
+    const isCurrentPasswordValid = await this.passwordService.validateCurrentPassword(
+      userId,
+      dto.currentPassword,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new BadRequestException('La contraseña actual es incorrecta');
+    }
+
+    // Validar que el nuevo password no sea igual al actual
+    const isSamePassword = await this.passwordService.verifyPassword(
+      dto.currentPassword,
+      dto.newPassword,
+    ).catch(() => false);
+
+    // Verificar que no sea la misma contraseña
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'La nueva contraseña debe ser diferente a la actual',
+      );
+    }
+
+    // Actualizar password usando PasswordService
+    await this.passwordService.updatePassword(userId, dto.newPassword);
+
+    // Revocar todas las sesiones activas por seguridad
+    await this.tokenService.revokeAllUserTokens(userId);
+
+    return {
+      success: true,
+      message: 'Contraseña actualizada exitosamente. Debe volver a iniciar sesión.',
+    };
   }
 }

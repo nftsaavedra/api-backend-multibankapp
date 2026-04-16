@@ -4,13 +4,20 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { Usuario, RolUsuario } from '@prisma/client';
-import * as argon2 from 'argon2';
+import { Usuario, Prisma, RolUsuario } from '@prisma/client';
 import { CreateUsuarioDto, UpdateUsuarioDto, ChangePasswordDto } from './dto';
+import { PasswordService } from '../auth/password.service';
 
+/**
+ * Servicio de Usuarios - Refactorizado
+ * SRP: Usa PasswordService para gestión de contraseñas
+ */
 @Injectable()
 export class UsuariosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwordService: PasswordService,
+  ) {}
 
   /**
    * Lista todos los usuarios (sin password_hash)
@@ -61,7 +68,7 @@ export class UsuariosService {
       throw new BadRequestException('El nombre de usuario ya existe');
     }
 
-    const passwordHash = await argon2.hash(dto.password);
+    const passwordHash = await this.passwordService.hashPassword(dto.password);
 
     return this.prisma.usuario.create({
       data: {
@@ -88,12 +95,12 @@ export class UsuariosService {
   ): Promise<Omit<Usuario, 'password_hash'>> {
     await this.findById(id); // Validar que existe
 
-    const updateData: any = { ...dto };
+    const updateData: Prisma.UsuarioUpdateInput = { ...dto };
 
     // Si se proporciona password, hashearlo
     if (dto.password) {
-      updateData.password_hash = await argon2.hash(dto.password);
-      delete updateData.password;
+      updateData.password_hash = await this.passwordService.hashPassword(dto.password);
+      delete (updateData as Record<string, unknown>).password;
     }
 
     return this.prisma.usuario.update({

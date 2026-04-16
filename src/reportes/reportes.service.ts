@@ -3,6 +3,13 @@ import { PrismaService } from '../prisma.service';
 import { TipoCorte } from '@prisma/client';
 import { DateTime } from 'luxon';
 
+export interface SemanaData {
+  semana: string;
+  totalComisiones: number;
+  totalOperaciones: number;
+  diasTrabajados: number;
+}
+
 @Injectable()
 export class ReportesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -101,7 +108,7 @@ export class ReportesService {
     });
 
     // Agrupar por semana
-    const semanasMap: Record<string, any> = {};
+    const semanasMap: Record<string, SemanaData> = {};
     
     cortes.forEach(corte => {
       const fecha = DateTime.fromJSDate(corte.fecha_corte_ejecucion);

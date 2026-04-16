@@ -1,6 +1,9 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { AuthService, type LoginDto } from './auth.service';
+import { AuthService, type LoginDto, type ChangePasswordDto } from './auth.service';
+import { JwtAuthGuard } from '../core/jwt-auth.guard';
+import { CurrentUser } from '../core/current-user.decorator';
+import type { CurrentUserPayload } from '../core/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -21,5 +24,15 @@ export class AuthController {
   @Post('logout')
   async logout(@Body('refresh_token') refreshToken: string) {
     return this.authService.logout(refreshToken);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 intentos por minuto
+  async changePassword(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.userId, dto);
   }
 }

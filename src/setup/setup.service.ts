@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import * as argon2 from 'argon2';
 import { RolUsuario } from '@prisma/client';
+import { IsString, MinLength, MaxLength } from 'class-validator';
 
 export interface SetupStatus {
   initialized: boolean;
@@ -9,8 +10,15 @@ export interface SetupStatus {
   entitiesCount: number;
 }
 
-export interface InitSetupDto {
+export class InitSetupDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(50)
   username: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
   password: string;
 }
 
