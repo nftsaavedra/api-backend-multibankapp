@@ -1,17 +1,8 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { TipoCorte, CorteCaja } from '@prisma/client';
+import { TipoCorte } from '@prisma/client';
 import { DateTime } from 'luxon';
-
-const TIMEZONE = 'America/Lima';
-
-// Orden secuencial de cortes
-const ORDEN_CORTES: TipoCorte[] = [
-  TipoCorte.INICIO_DIA,
-  TipoCorte.MEDIO_DIA,
-  TipoCorte.INICIO_TARDE,
-  TipoCorte.CIERRE_DIA,
-];
+import { TIMEZONE, CORTES } from '../core/constants';
 
 export interface ValidacionSecuenciaResult {
   permitido: boolean;
@@ -48,6 +39,8 @@ export class CorteSequenceValidatorService {
       };
     }
 
+    const ORDEN_CORTES = CORTES.ORDEN as readonly TipoCorte[];
+
     // Obtener TODOS los cortes del operador (sin límite de fecha)
     const todosCortes = await this.prisma.corteCaja.findMany({
       where: { operador_id: operadorId },
@@ -74,10 +67,6 @@ export class CorteSequenceValidatorService {
 
     // Verificar si el último corte fue hoy
     const ultimoCorteEsHoy = fechaUltimoCorte.hasSame(inicioDia, 'day');
-
-    // Detectar si hay días sin cerrar
-    const hayDiasSinCerrar =
-      !ultimoCorteEsHoy && ultimoCorte.tipo_corte !== TipoCorte.CIERRE_DIA;
 
     // Si el último corte fue en un día anterior y NO fue CIERRE_DIA
     if (!ultimoCorteEsHoy && ultimoCorte.tipo_corte !== TipoCorte.CIERRE_DIA) {
@@ -168,19 +157,14 @@ export class CorteSequenceValidatorService {
    * Obtiene el nombre legible del tipo de corte
    */
   getNombreCorte(tipo: TipoCorte): string {
-    const nombres: Record<TipoCorte, string> = {
-      [TipoCorte.INICIO_DIA]: 'Inicio de Día',
-      [TipoCorte.MEDIO_DIA]: 'Medio Día',
-      [TipoCorte.INICIO_TARDE]: 'Inicio de Tarde',
-      [TipoCorte.CIERRE_DIA]: 'Cierre de Día',
-    };
-    return nombres[tipo];
+    return CORTES.NOMBRES[tipo];
   }
 
   /**
    * Obtiene el siguiente tipo de corte en la secuencia
    */
   getSiguienteCorte(tipoActual: TipoCorte): TipoCorte | undefined {
+    const ORDEN_CORTES = CORTES.ORDEN as readonly TipoCorte[];
     const indice = ORDEN_CORTES.indexOf(tipoActual);
     if (indice < ORDEN_CORTES.length - 1) {
       return ORDEN_CORTES[indice + 1];

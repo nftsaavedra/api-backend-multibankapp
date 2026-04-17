@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
 import { EntidadFinanciera, Prisma } from '@prisma/client';
-import { BalanceAdjusterService } from './balance-adjuster.service';
+import { esTipoEfectivo } from '../core/constants';
 
 // Tipo para transacciones Prisma
 type TxClient = Prisma.TransactionClient;
@@ -33,10 +32,6 @@ export interface SaldoEntidadInput {
  */
 @Injectable()
 export class CorteBalanceProcessorService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly balanceAdjuster: BalanceAdjusterService,
-  ) {}
 
   /**
    * Procesa saldos declarados por entidad y calcula totales
@@ -69,8 +64,7 @@ export class CorteBalanceProcessorService {
       });
 
       // Clasificar para totales
-      const esEfectivo =
-        cuenta.tipo.includes('EFECTIVO') || cuenta.tipo.includes('CAJA');
+      const esEfectivo = esTipoEfectivo(cuenta.tipo);
       if (esEfectivo) {
         totalEfectivoDeclarado += saldoEntidad.saldoDeclarado;
         totalEfectivoSistema += saldoSistema;
@@ -93,87 +87,22 @@ export class CorteBalanceProcessorService {
   }
 
   /**
-   * Procesa saldos legacy (efectivo/digital directo)
-   */
-  procesarSaldosLegacy(
-    todasCuentas: EntidadFinanciera[],
-    saldoEfectivoDeclarado: number,
-    saldoDigitalDeclarado: number,
-  ): TotalesCorte {
-    const cuentasEfectivo = todasCuentas.filter(
-      (c) =>
-        c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
-    );
-    const cuentasDigital = todasCuentas.filter(
-      (c) =>
-        !c.tipo.includes('EFECTIVO') && !c.tipo.includes('CAJA'),
-    );
-
-    const totalEfectivoSistema = cuentasEfectivo.reduce(
-      (sum, c) => sum + Number(c.saldo_actual),
-      0,
-    );
-    const totalDigitalSistema = cuentasDigital.reduce(
-      (sum, c) => sum + Number(c.saldo_actual),
-      0,
-    );
-
-    return {
-      totalEfectivoDeclarado: saldoEfectivoDeclarado,
-      totalDigitalDeclarado: saldoDigitalDeclarado,
-      totalEfectivoSistema,
-      totalDigitalSistema,
-      diferenciaEfectivo: saldoEfectivoDeclarado - totalEfectivoSistema,
-      diferenciaDigital: saldoDigitalDeclarado - totalDigitalSistema,
-    };
-  }
-
-  /**
    * Ajusta saldos de entidades cuando hay diferencias significativas
    */
   async ajustarDiferencias(
     tx: TxClient,
     saldosProcesados: SaldoEntidadProcesado[],
-    totales: TotalesCorte,
-    todasCuentas: EntidadFinanciera[],
+    _totales: TotalesCorte,
+    _todasCuentas: EntidadFinanciera[],
     umbral = 0.01,
   ): Promise<void> {
-    // Ajustar cada entidad individualmente si hay saldos detallados
-    if (saldosProcesados.length > 0) {
-      for (const saldoProc of saldosProcesados) {
-        if (Math.abs(saldoProc.diferencia) > umbral) {
-          await tx.entidadFinanciera.update({
-            where: { id: saldoProc.entidadId },
-            data: { saldo_actual: { increment: saldoProc.diferencia } },
-          });
-        }
+    for (const saldoProc of saldosProcesados) {
+      if (Math.abs(saldoProc.diferencia) > umbral) {
+        await tx.entidadFinanciera.update({
+          where: { id: saldoProc.entidadId },
+          data: { saldo_actual: { increment: saldoProc.diferencia } },
+        });
       }
-      return;
-    }
-
-    // Si no hay saldos detallados, usar método legacy proporcional
-    if (Math.abs(totales.diferenciaEfectivo) > umbral) {
-      const cuentasEfectivo = todasCuentas.filter(
-        (c) =>
-          c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
-      );
-      await this.balanceAdjuster.adjustProportionally(
-        tx,
-        cuentasEfectivo,
-        totales.diferenciaEfectivo,
-      );
-    }
-
-    if (Math.abs(totales.diferenciaDigital) > umbral) {
-      const cuentasDigital = todasCuentas.filter(
-        (c) =>
-          !c.tipo.includes('EFECTIVO') && !c.tipo.includes('CAJA'),
-      );
-      await this.balanceAdjuster.adjustProportionally(
-        tx,
-        cuentasDigital,
-        totales.diferenciaDigital,
-      );
     }
   }
 
@@ -195,20 +124,20 @@ export class CorteBalanceProcessorService {
 
     if (tipoCorte === 'CIERRE_DIA' && !cumpleMinimo) {
       observaciones.push(
-        `⚠️ Solo ${operacionesKasnet}/${minimoKasnet} operaciones diarias. Mínimo no cumplido.`,
+        `Solo ${operacionesKasnet}/${minimoKasnet} operaciones diarias. Minimo no cumplido.`,
       );
     }
 
     // Diferencias significativas
     if (Math.abs(totales.diferenciaEfectivo) > umbralDiferencia) {
       observaciones.push(
-        `📊 Ajuste efectivo: S/${totales.diferenciaEfectivo.toFixed(2)}`,
+        `Ajuste efectivo: S/${totales.diferenciaEfectivo.toFixed(2)}`,
       );
     }
 
     if (Math.abs(totales.diferenciaDigital) > umbralDiferencia) {
       observaciones.push(
-        `📊 Ajuste digital: S/${totales.diferenciaDigital.toFixed(2)}`,
+        `Ajuste digital: S/${totales.diferenciaDigital.toFixed(2)}`,
       );
     }
 

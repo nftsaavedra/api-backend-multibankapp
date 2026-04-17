@@ -1,12 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { CorteCaja, EstadoConciliacion, EstadoMovimiento, TipoCorte, EntidadFinanciera } from '@prisma/client';
+import { CorteCaja, EstadoConciliacion, EstadoMovimiento, TipoCorte, Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import type { CreateCorteDto, FindCortesFiltersDto } from './dto';
-import { BalanceAdjusterService } from './balance-adjuster.service';
 import { CorteSequenceValidatorService } from './corte-sequence-validator.service';
 import { CorteBalanceProcessorService } from './corte-balance-processor.service';
-import { TIMEZONE, CORTES } from '../core/constants';
+import { TIMEZONE, CORTES, esTipoEfectivo } from '../core/constants';
 
 export interface CorteResult {
   corte: CorteCaja;
@@ -22,13 +21,12 @@ export interface CorteResult {
 export class CortesCajaService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly balanceAdjuster: BalanceAdjusterService,
     private readonly sequenceValidator: CorteSequenceValidatorService,
     private readonly balanceProcessor: CorteBalanceProcessorService,
   ) {}
 
   async findAll(filters?: FindCortesFiltersDto): Promise<CorteCaja[]> {
-    const where: Record<string, unknown> = {};
+    const where: Prisma.CorteCajaWhereInput = {};
 
     if (filters?.operadorId) {
       where.operador_id = filters.operadorId;
@@ -36,12 +34,10 @@ export class CortesCajaService {
     if (filters?.fechaDesde || filters?.fechaHasta) {
       where.fecha_corte_ejecucion = {};
       if (filters.fechaDesde) {
-        (where.fecha_corte_ejecucion as Record<string, Date>).gte =
-          filters.fechaDesde;
+        where.fecha_corte_ejecucion.gte = filters.fechaDesde;
       }
       if (filters.fechaHasta) {
-        (where.fecha_corte_ejecucion as Record<string, Date>).lte =
-          filters.fechaHasta;
+        where.fecha_corte_ejecucion.lte = filters.fechaHasta;
       }
     }
 
@@ -106,78 +102,27 @@ export class CortesCajaService {
       });
 
       // 3. Procesar saldos declarados por entidad
-      let saldosEntidadesProcesadas: Array<{entidadId: string, declarado: number, sistema: number, diferencia: number}> = [];
-      let totalEfectivoDeclarado = 0;
-      let totalDigitalDeclarado = 0;
-      let totalEfectivoSistema = 0;
-      let totalDigitalSistema = 0;
+      const resultado = this.balanceProcessor.procesarSaldosEntidades(todasCuentas, dto.saldosEntidades ?? []);
+      const saldosEntidadesProcesadas = resultado.saldosProcesados;
+      const totales = resultado.totales;
 
-      if (dto.saldosEntidades && dto.saldosEntidades.length > 0) {
-        // NUEVO FLUJO: Usar saldos por entidad
-        for (const saldoEntidad of dto.saldosEntidades) {
-          const cuenta = todasCuentas.find(c => c.id === saldoEntidad.entidadId);
-          if (!cuenta) continue;
-
-          const saldoSistema = Number(cuenta.saldo_actual);
-          const diferencia = saldoEntidad.saldoDeclarado - saldoSistema;
-
-          saldosEntidadesProcesadas.push({
-            entidadId: cuenta.id,
-            declarado: saldoEntidad.saldoDeclarado,
-            sistema: saldoSistema,
-            diferencia,
-          });
-
-          // Clasificar para totales legacy
-          const esEfectivo = cuenta.tipo.includes('EFECTIVO') || cuenta.tipo.includes('CAJA');
-          if (esEfectivo) {
-            totalEfectivoDeclarado += saldoEntidad.saldoDeclarado;
-            totalEfectivoSistema += saldoSistema;
-          } else {
-            totalDigitalDeclarado += saldoEntidad.saldoDeclarado;
-            totalDigitalSistema += saldoSistema;
-          }
-        }
-      } else {
-        // FLUJO LEGACY: Usar campos efectivo/digital directamente
-        totalEfectivoDeclarado = dto.saldoEfectivoDeclarado || 0;
-        totalDigitalDeclarado = dto.saldoDigitalDeclarado || 0;
-
-        const cuentasEfectivo = todasCuentas.filter(c =>
-          c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
-        );
-        const cuentasDigital = todasCuentas.filter(c =>
-          !c.tipo.includes('EFECTIVO') && !c.tipo.includes('CAJA'),
-        );
-
-        totalEfectivoSistema = cuentasEfectivo.reduce(
-          (sum, c) => sum + Number(c.saldo_actual),
-          0,
-        );
-        totalDigitalSistema = cuentasDigital.reduce(
-          (sum, c) => sum + Number(c.saldo_actual),
-          0,
-        );
-      }
-
-      const diferenciaEfectivo = totalEfectivoDeclarado - totalEfectivoSistema;
-      const diferenciaDigital = totalDigitalDeclarado - totalDigitalSistema;
+      const diferenciaEfectivo = totales.diferenciaEfectivo;
+      const diferenciaDigital = totales.diferenciaDigital;
+      const totalEfectivoDeclarado = totales.totalEfectivoDeclarado;
+      const totalDigitalDeclarado = totales.totalDigitalDeclarado;
+      const totalEfectivoSistema = totales.totalEfectivoSistema;
+      const totalDigitalSistema = totales.totalDigitalSistema;
 
       // 4. Validar mínimo operativo (solo para CIERRE_DIA)
       const operacionesKasnet = dto.operacionesKasnet || 0;
       const cumpleMinimo = dto.tipoCorte !== 'CIERRE_DIA' || operacionesKasnet >= CORTES.MINIMO_KASNET;
 
-      // 5. Generar observaciones
-      const observaciones: string[] = [];
-      if (dto.tipoCorte === 'CIERRE_DIA' && !cumpleMinimo) {
-        observaciones.push(`⚠️ Solo ${operacionesKasnet}/${CORTES.MINIMO_KASNET} operaciones diarias. Mínimo no cumplido.`);
-      }
-      if (Math.abs(diferenciaEfectivo) > CORTES.UMBRAL_DIFERENCIA) {
-        observaciones.push(`📊 Ajuste efectivo: S/${diferenciaEfectivo.toFixed(2)}`);
-      }
-      if (Math.abs(diferenciaDigital) > CORTES.UMBRAL_DIFERENCIA) {
-        observaciones.push(`📊 Ajuste digital: S/${diferenciaDigital.toFixed(2)}`);
-      }
+      // 5. Generar observaciones (delegado a servicio especializado)
+      const observaciones = this.balanceProcessor.generarObservaciones(
+        dto.tipoCorte,
+        operacionesKasnet,
+        totales,
+      );
 
       // 6. Si es corrección, buscar el corte a corregir
       let corteAnuladoId: string | null = null;
@@ -235,49 +180,20 @@ export class CortesCajaService {
         );
       }
 
-      // 9. AJUSTAR SALDOS si hay diferencias significativas
+      // 9. AJUSTAR SALDOS si hay diferencias significativas (delegado a servicio)
       if (Math.abs(diferenciaEfectivo) > CORTES.UMBRAL_DIFERENCIA || Math.abs(diferenciaDigital) > CORTES.UMBRAL_DIFERENCIA) {
-        // Ajustar cada entidad individualmente
-        for (const saldoProc of saldosEntidadesProcesadas) {
-          if (Math.abs(saldoProc.diferencia) > CORTES.UMBRAL_DIFERENCIA) {
-            await tx.entidadFinanciera.update({
-              where: { id: saldoProc.entidadId },
-              data: { saldo_actual: { increment: saldoProc.diferencia } },
-            });
-          }
-        }
-
-        // Si no hay saldos detallados, usar método legacy proporcional
-        if (saldosEntidadesProcesadas.length === 0) {
-          const cuentasEfectivo = todasCuentas.filter(c =>
-            c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
-          );
-          const cuentasDigital = todasCuentas.filter(c =>
-            !c.tipo.includes('EFECTIVO') && !c.tipo.includes('CAJA'),
-          );
-
-          if (Math.abs(diferenciaEfectivo) > CORTES.UMBRAL_DIFERENCIA) {
-            await this.balanceAdjuster.adjustProportionally(
-              tx,
-              cuentasEfectivo,
-              diferenciaEfectivo,
-            );
-          }
-          if (Math.abs(diferenciaDigital) > CORTES.UMBRAL_DIFERENCIA) {
-            await this.balanceAdjuster.adjustProportionally(
-              tx,
-              cuentasDigital,
-              diferenciaDigital,
-            );
-          }
-        }
+        await this.balanceProcessor.ajustarDiferencias(
+          tx,
+          saldosEntidadesProcesadas,
+          totales,
+          todasCuentas,
+          CORTES.UMBRAL_DIFERENCIA,
+        );
       }
 
       // 10. REGISTRAR MOVIMIENTO DE COMISIÓN si hay excedente declarado
       if (dto.excedenteComision > 0) {
-        const cuentaEfectivoPrincipal = todasCuentas.find(c =>
-          c.tipo.includes('EFECTIVO') || c.tipo.includes('CAJA'),
-        );
+        const cuentaEfectivoPrincipal = todasCuentas.find((c) => esTipoEfectivo(c.tipo));
 
         if (cuentaEfectivoPrincipal) {
           await tx.movimientoAdministrativo.create({
@@ -405,7 +321,7 @@ export class CortesCajaService {
     });
 
     const total = cortes.reduce((sum, c) => sum + c.operaciones_kasnet, 0);
-    const meta = 350; // Meta diaria
+    const meta = CORTES.MINIMO_KASNET;
     const diasTranscurridos = ahora.day;
     const metaMensual = meta * diasTranscurridos;
     const porcentaje = metaMensual > 0 ? (total / metaMensual) * 100 : 0;

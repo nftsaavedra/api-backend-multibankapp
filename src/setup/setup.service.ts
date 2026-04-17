@@ -1,8 +1,8 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import * as argon2 from 'argon2';
 import { RolUsuario } from '@prisma/client';
 import { IsString, MinLength, MaxLength } from 'class-validator';
+import { PasswordService } from '../auth/password.service';
 
 export interface SetupStatus {
   initialized: boolean;
@@ -28,9 +28,16 @@ export interface SetupResult {
   createdEntities: string[];
 }
 
+/**
+ * Servicio de Setup - Refactorizado
+ * SRP: Usa PasswordService para gestión de contraseñas
+ */
 @Injectable()
 export class SetupService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwordService: PasswordService,
+  ) {}
 
   async getStatus(): Promise<SetupStatus> {
     const admin = await this.prisma.usuario.findFirst({
@@ -56,7 +63,7 @@ export class SetupService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const passwordHash = await argon2.hash(dto.password);
+      const passwordHash = await this.passwordService.hashPassword(dto.password);
 
       await tx.usuario.create({
         data: {

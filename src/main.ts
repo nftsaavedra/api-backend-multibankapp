@@ -3,7 +3,6 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import * as dotenv from 'dotenv';
 import helmet from 'helmet';
-import type { Request, Response, NextFunction } from 'express';
 import { Logger } from 'nestjs-pino';
 
 // Cargar variables de entorno antes de cualquier otra cosa
@@ -12,26 +11,23 @@ dotenv.config();
 // AllExceptionsFilter and DateTransformInterceptor are now provided by CoreModule
 
 async function bootstrap() {
+  // Validar JWT_SECRET en producción
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('change-me'))
+  ) {
+    console.error('ERROR: JWT_SECRET debe cambiarse en producción. Genere uno con: openssl rand -hex 32');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
 
-  // Security headers con Helmet
+  // Security headers con Helmet (incluye X-Content-Type-Options, X-Frame-Options, HSTS, XSS protection)
   app.use(helmet());
-  app.use(helmet.noSniff());
-  app.use(helmet.frameguard({ action: 'deny' }));
-  app.use(helmet.xssFilter());
-  app.use(
-    helmet.hsts({
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    }),
-  );
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
       transformOptions: { enableImplicitConversion: true },
       // Detallar errores de validación
       exceptionFactory: (errors) => {
@@ -42,8 +38,6 @@ async function bootstrap() {
       },
     }),
   );
-
-  // Global filters and interceptors are configured in CoreModule
 
   // CORS configurado para múltiples clientes (Desktop, Mobile, Web)
   // En producción, configurar ALLOWED_ORIGINS con dominios específicos
@@ -75,15 +69,6 @@ async function bootstrap() {
     exposedHeaders: 'Content-Length,Content-Range,X-Total-Count',
     credentials: true,
     maxAge: 86400, // 24 horas
-  });
-
-  // Security headers
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    next();
   });
 
   await app.listen(process.env.PORT ?? 3000);

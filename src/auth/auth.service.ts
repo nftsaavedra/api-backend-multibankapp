@@ -1,19 +1,19 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma.service';
 import { CurrentUserPayload } from '../core/current-user.decorator';
-import { RolUsuario } from '@prisma/client';
 import { AUTH } from '../core/constants';
 import { TokenService } from './token.service';
 import { PasswordService } from './password.service';
-import { IsString, MinLength, MaxLength, Min } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsDefined } from 'class-validator';
 
 export class LoginDto {
+  @IsDefined()
   @IsString()
   @MinLength(3)
   @MaxLength(50)
   username: string;
 
+  @IsDefined()
   @IsString()
   @MinLength(6)
   @MaxLength(100)
@@ -44,7 +44,6 @@ export interface AuthResponse {
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
     private readonly tokenService: TokenService,
     private readonly passwordService: PasswordService,
   ) {}
@@ -148,12 +147,6 @@ export class AuthService {
     if (!isCurrentPasswordValid) {
       throw new BadRequestException('La contraseña actual es incorrecta');
     }
-
-    // Validar que el nuevo password no sea igual al actual
-    const isSamePassword = await this.passwordService.verifyPassword(
-      dto.currentPassword,
-      dto.newPassword,
-    ).catch(() => false);
 
     // Verificar que no sea la misma contraseña
     if (dto.currentPassword === dto.newPassword) {

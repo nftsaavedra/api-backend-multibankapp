@@ -7,12 +7,11 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { DateTime } from 'luxon';
-
-const TIMEZONE = 'America/Lima';
+import { TIMEZONE } from './constants';
 
 @Injectable()
 export class DateTransformInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
     return next.handle().pipe(map((data) => this.transformDates(data)));
   }
 

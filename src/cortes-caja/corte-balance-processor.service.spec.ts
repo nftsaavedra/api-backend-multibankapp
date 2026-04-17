@@ -1,15 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma.service';
 import { CorteBalanceProcessorService } from './corte-balance-processor.service';
-import { BalanceAdjusterService } from './balance-adjuster.service';
+import { EntidadFinanciera } from '@prisma/client';
+import type { SaldoEntidadInput, TotalesCorte, SaldoEntidadProcesado } from './corte-balance-processor.service';
 
 describe('CorteBalanceProcessorService', () => {
   let service: CorteBalanceProcessorService;
-  let balanceAdjuster: BalanceAdjusterService;
-
-  const mockBalanceAdjuster = {
-    adjustProportionally: jest.fn(),
-  };
 
   const mockPrisma = {};
 
@@ -21,15 +17,10 @@ describe('CorteBalanceProcessorService', () => {
           provide: PrismaService,
           useValue: mockPrisma,
         },
-        {
-          provide: BalanceAdjusterService,
-          useValue: mockBalanceAdjuster,
-        },
       ],
     }).compile();
 
     service = module.get<CorteBalanceProcessorService>(CorteBalanceProcessorService);
-    balanceAdjuster = module.get<BalanceAdjusterService>(BalanceAdjusterService);
   });
 
   afterEach(() => {
@@ -56,7 +47,7 @@ describe('CorteBalanceProcessorService', () => {
         { entidadId: 'entidad-2', saldoDeclarado: 480.0 },
       ];
 
-      const result = service.procesarSaldosEntidades(cuentas as any, saldosDeclarados);
+      const result = service.procesarSaldosEntidades(cuentas as unknown as EntidadFinanciera[], saldosDeclarados as SaldoEntidadInput[]);
 
       expect(result.saldosProcesados).toHaveLength(2);
       expect(result.saldosProcesados[0].diferencia).toBe(50.0);
@@ -67,42 +58,21 @@ describe('CorteBalanceProcessorService', () => {
 
     it('debe clasificar correctamente efectivo vs digital', () => {
       const cuentas = [
-        { id: 'caja-1', tipo: 'CAJA EFECTIVO', saldo_actual: 200.0 },
-        { id: 'bim-1', tipo: 'BIM', saldo_actual: 300.0 },
-        { id: 'kasnet-1', tipo: 'KASNET POS', saldo_actual: 150.0 },
-      ];
+        { id: 'caja-1', tipo: 'CAJA EFECTIVO', saldo_actual: 200 },
+        { id: 'bim-1', tipo: 'BIM', saldo_actual: 300 },
+        { id: 'kasnet-1', tipo: 'KASNET POS', saldo_actual: 150 },
+      ] as unknown as EntidadFinanciera[];
 
-      const saldosDeclarados = [
+      const saldosDeclarados: SaldoEntidadInput[] = [
         { entidadId: 'caja-1', saldoDeclarado: 220.0 },
         { entidadId: 'bim-1', saldoDeclarado: 290.0 },
         { entidadId: 'kasnet-1', saldoDeclarado: 150.0 },
       ];
 
-      const result = service.procesarSaldosEntidades(cuentas as any, saldosDeclarados);
+      const result = service.procesarSaldosEntidades(cuentas as unknown as EntidadFinanciera[], saldosDeclarados as SaldoEntidadInput[]);
 
       expect(result.totales.totalEfectivoDeclarado).toBe(220.0);
       expect(result.totales.totalDigitalDeclarado).toBe(440.0);
-    });
-  });
-
-  describe('procesarSaldosLegacy', () => {
-    it('debe procesar saldos legacy (efectivo/digital directo)', () => {
-      const cuentas = [
-        { id: 'caja-1', tipo: 'CAJA PRINCIPAL', saldo_actual: 500.0 },
-        { id: 'caja-2', tipo: 'CAJA SECUNDARIA', saldo_actual: 300.0 },
-        { id: 'bim-1', tipo: 'BIM', saldo_actual: 1000.0 },
-      ];
-
-      const result = service.procesarSaldosLegacy(
-        cuentas as any,
-        850.0, // declarado efectivo
-        1020.0, // declarado digital
-      );
-
-      expect(result.totalEfectivoSistema).toBe(800.0);
-      expect(result.totalDigitalSistema).toBe(1000.0);
-      expect(result.diferenciaEfectivo).toBe(50.0);
-      expect(result.diferenciaDigital).toBe(20.0);
     });
   });
 
@@ -176,7 +146,7 @@ describe('CorteBalanceProcessorService', () => {
         },
       };
 
-      const saldosProcesados = [
+      const saldosProcesados: SaldoEntidadProcesado[] = [
         {
           entidadId: 'entidad-1',
           declarado: 1050,
@@ -191,7 +161,7 @@ describe('CorteBalanceProcessorService', () => {
         },
       ];
 
-      const totales = {
+      const totales: TotalesCorte = {
         totalEfectivoDeclarado: 1530,
         totalDigitalDeclarado: 0,
         totalEfectivoSistema: 1500,
@@ -201,48 +171,13 @@ describe('CorteBalanceProcessorService', () => {
       };
 
       await service.ajustarDiferencias(
-        mockTx as any,
+        mockTx as unknown as Parameters<typeof service.ajustarDiferencias>[0],
         saldosProcesados,
         totales,
         [],
       );
 
       expect(mockTx.entidadFinanciera.update).toHaveBeenCalledTimes(2);
-    });
-
-    it('debe usar método proporcional cuando no hay saldos detallados', async () => {
-      const mockTx = {
-        entidadFinanciera: {
-          update: jest.fn(),
-        },
-      };
-
-      const cuentas = [
-        { id: 'caja-1', tipo: 'CAJA PRINCIPAL', saldo_actual: 500.0 },
-        { id: 'caja-2', tipo: 'CAJA SECUNDARIA', saldo_actual: 300.0 },
-      ];
-
-      const totales = {
-        totalEfectivoDeclarado: 850,
-        totalDigitalDeclarado: 0,
-        totalEfectivoSistema: 800,
-        totalDigitalSistema: 0,
-        diferenciaEfectivo: 50,
-        diferenciaDigital: 0,
-      };
-
-      await service.ajustarDiferencias(
-        mockTx as any,
-        [], // Sin saldos detallados
-        totales,
-        cuentas as any,
-      );
-
-      expect(balanceAdjuster.adjustProportionally).toHaveBeenCalledWith(
-        mockTx,
-        cuentas,
-        50,
-      );
     });
   });
 });

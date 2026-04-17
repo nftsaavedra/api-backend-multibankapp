@@ -6,7 +6,6 @@ import { TipoCorte } from '@prisma/client';
 
 describe('CorteSequenceValidatorService', () => {
   let service: CorteSequenceValidatorService;
-  let prisma: PrismaService;
 
   const mockPrisma = {
     corteCaja: {
@@ -26,7 +25,6 @@ describe('CorteSequenceValidatorService', () => {
     }).compile();
 
     service = module.get<CorteSequenceValidatorService>(CorteSequenceValidatorService);
-    prisma = module.get<PrismaService>(PrismaService);
   });
 
   afterEach(() => {

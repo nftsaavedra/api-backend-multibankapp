@@ -1,10 +1,8 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class MovementValidatorService {
-  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Validates that an account exists, is active, and has sufficient balance (if origin account)

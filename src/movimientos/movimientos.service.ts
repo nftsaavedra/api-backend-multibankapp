@@ -27,7 +27,7 @@ export class MovimientosService {
   async findAll(
     filters?: FindMovimientosFiltersDto,
   ): Promise<MovimientoAdministrativo[]> {
-    const where: Record<string, unknown> = {};
+    const where: Prisma.MovimientoAdministrativoWhereInput = {};
 
     if (filters?.operadorId) {
       where.operador_id = filters.operadorId;
@@ -44,10 +44,10 @@ export class MovimientosService {
     if (filters?.fechaDesde || filters?.fechaHasta) {
       where.fecha_registro = {};
       if (filters.fechaDesde) {
-        (where.fecha_registro as Record<string, Date>).gte = filters.fechaDesde;
+        where.fecha_registro.gte = filters.fechaDesde;
       }
       if (filters.fechaHasta) {
-        (where.fecha_registro as Record<string, Date>).lte = filters.fechaHasta;
+        where.fecha_registro.lte = filters.fechaHasta;
       }
     }
 

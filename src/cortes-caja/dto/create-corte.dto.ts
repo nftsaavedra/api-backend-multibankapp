@@ -16,25 +16,10 @@ export class CreateCorteDto {
   @IsEnum(TipoCorte)
   tipoCorte: TipoCorte;
 
-  // Campos legacy para compatibilidad
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Type(() => Number)
-  @IsOptional()
-  saldoEfectivoDeclarado?: number;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @Type(() => Number)
-  @IsOptional()
-  saldoDigitalDeclarado?: number;
-
-  // Nuevos campos para saldos por entidad
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => EntidadSaldoDto)
-  @IsOptional()
-  saldosEntidades?: EntidadSaldoDto[];
+  saldosEntidades: EntidadSaldoDto[];
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

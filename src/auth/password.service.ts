@@ -61,7 +61,7 @@ export class PasswordService {
   /**
    * Valida las credenciales de un usuario
    */
-  async validateCredentials(username: string, password: string): Promise<{ valid: boolean; user?: { id: string; username: string; rol: RolUsuario; activo: boolean; password_hash: string } }> {
+  async validateCredentials(username: string, password: string): Promise<{ valid: boolean; user?: { id: string; username: string; rol: RolUsuario; activo: boolean } }> {
     const usuario = await this.prisma.usuario.findUnique({
       where: { username },
     });
@@ -83,7 +83,6 @@ export class PasswordService {
         username: usuario.username,
         rol: usuario.rol,
         activo: usuario.activo,
-        password_hash: usuario.password_hash,
       },
     };
   }

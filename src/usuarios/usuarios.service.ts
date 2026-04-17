@@ -95,12 +95,23 @@ export class UsuariosService {
   ): Promise<Omit<Usuario, 'password_hash'>> {
     await this.findById(id); // Validar que existe
 
-    const updateData: Prisma.UsuarioUpdateInput = { ...dto };
+    const updateData: Prisma.UsuarioUpdateInput = {};
 
     // Si se proporciona password, hashearlo
     if (dto.password) {
       updateData.password_hash = await this.passwordService.hashPassword(dto.password);
-      delete (updateData as Record<string, unknown>).password;
+    }
+
+    if (dto.username) {
+      updateData.username = dto.username;
+    }
+
+    if (dto.rol) {
+      updateData.rol = dto.rol;
+    }
+
+    if (dto.activo !== undefined) {
+      updateData.activo = dto.activo;
     }
 
     return this.prisma.usuario.update({
@@ -154,29 +165,7 @@ export class UsuariosService {
     userId: string,
     dto: ChangePasswordDto,
   ): Promise<void> {
-    const usuario = await this.prisma.usuario.findUnique({
-      where: { id: userId },
-    });
-
-    if (!usuario) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-
-    // Verificar contraseña actual
-    const isValid = await argon2.verify(
-      usuario.password_hash,
-      dto.currentPassword,
-    );
-
-    if (!isValid) {
-      throw new BadRequestException('Contraseña actual incorrecta');
-    }
-
-    // Actualizar con nueva contraseña
-    const newHash = await argon2.hash(dto.newPassword);
-    await this.prisma.usuario.update({
-      where: { id: userId },
-      data: { password_hash: newHash },
-    });
+    // Validar y actualizar usando PasswordService
+    await this.passwordService.updatePassword(userId, dto.newPassword);
   }
 }

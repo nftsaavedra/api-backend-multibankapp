@@ -6,6 +6,19 @@
 // Zona horaria de la aplicación
 export const TIMEZONE = 'America/Lima' as const;
 
+/**
+ * Determina si un tipo de entidad financiera es efectivo (caja)
+ * Centralizado para evitar lógica duplicada en servicios
+ */
+export const esTipoEfectivo = (tipo: string): boolean =>
+  tipo.includes('EFECTIVO') || tipo.includes('CAJA');
+
+/**
+ * Determina si un tipo de entidad financiera es digital
+ */
+export const esTipoDigital = (tipo: string): boolean =>
+  !esTipoEfectivo(tipo);
+
 // Límites operativos
 export const CORTES = {
   // Secuencia de tipos de corte
